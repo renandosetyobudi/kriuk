@@ -191,17 +191,43 @@ function Btn({ children, onClick, variant = "primary", size = "md", icon, full, 
 }
 
 function Modal({ show, onClose, title, children, wide }) {
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (show) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [show]);
   if (!show) return null;
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.4)", backdropFilter: "blur(4px)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "rgba(17,24,39,0.5)", backdropFilter: "blur(4px)",
+      zIndex: 900, display: "flex",
+      alignItems: "flex-start",          // start from top so it's always visible
+      justifyContent: "center",
+      padding: "60px 16px 24px",          // top padding so modal isn't stuck to top edge
+      overflowY: "auto",                  // allow page-level scroll if modal is tall
+      WebkitOverflowScrolling: "touch",
+    }}>
       <div className="fade-up" onClick={e => e.stopPropagation()}
-        style={{ background: "var(--white)", borderRadius: 18, padding: 26, width: "100%", maxWidth: wide ? 660 : 480,
-          maxHeight: "92vh", overflowY: "auto", boxShadow: "var(--shadow-lg)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        style={{
+          background: "var(--white)", borderRadius: 18, padding: 24,
+          width: "100%", maxWidth: wide ? 660 : 480,
+          boxShadow: "var(--shadow-lg)",
+          margin: "0 auto",                // center horizontally
+        }}>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          marginBottom: 20,
+          position: "sticky", top: -24, background: "var(--white)",
+          padding: "8px 0 12px", marginTop: -8,
+          borderBottom: "1px solid var(--border)", zIndex: 2,
+        }}>
           <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>{title}</h3>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "1.5px solid var(--border)", background: "var(--bg)", color: "var(--sub)", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+          <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: 8, border: "1.5px solid var(--border)", background: "var(--bg)", color: "var(--sub)", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
         </div>
-        {children}
+        <div style={{ paddingTop: 4 }}>{children}</div>
       </div>
     </div>
   );
