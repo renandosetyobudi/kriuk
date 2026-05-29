@@ -1631,7 +1631,9 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
   const [userLoc, setUserLoc] = useState(null);
   const [locStatus, setLocStatus] = useState("idle"); // idle|loading|ok|denied|unavailable
   const [showAddStore, setShowAddStore] = useState(false);
-  const [showAddRoute, setShowAddRoute] = useState(false);
+  const [showRoutes, setShowRoutes] = useState(false);
+  const [showRouteForm, setShowRouteForm] = useState(false);
+  const [editingRouteId, setEditingRouteId] = useState(null);
   const [sf, setSf] = useState({ name:"",address:"",contact:"",routeId:"" });
   const [rf, setRf] = useState({ name:"",color:"#E07B1A",days:[] });
   const { confirm, Dialog } = useConfirm();
@@ -1653,7 +1655,14 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
     );
   };
   const pickNearest = () => { setSortBy("nearest"); if (!userLoc && locStatus !== "loading") requestLocation(); };
-  const addRoute = () => { if (!rf.name) return; setData(d => ({...d, routes:[...d.routes,{id:uid(),...rf}]})); setRf({name:"",color:"#E07B1A",days:[]}); setShowAddRoute(false); };
+  const openNewRoute = () => { setEditingRouteId(null); setRf({ name:"", color:"#E07B1A", days:[] }); setShowRouteForm(true); };
+  const openEditRoute = (r) => { setEditingRouteId(r.id); setRf({ name:r.name, color:r.color, days:r.days||[] }); setShowRouteForm(true); };
+  const saveRoute = () => {
+    if (!rf.name.trim()) return;
+    if (editingRouteId) setData(d => ({...d, routes: d.routes.map(x => x.id === editingRouteId ? {...x, ...rf} : x)}));
+    else setData(d => ({...d, routes:[...d.routes, {id:uid(), ...rf}]}));
+    setShowRouteForm(false); setEditingRouteId(null);
+  };
   const askDelRoute = (r) => {
     const cnt = stores.filter(s => s.routeId === r.id).length;
     confirm({ title: "Hapus Rute?", message: `Rute "${r.name}" akan dihapus.${cnt > 0 ? ` ${cnt} toko di rute ini akan kehilangan rute-nya.` : ""}`, confirmText: "Ya, Hapus Rute", onConfirm: () => { setData(d => ({...d, routes: d.routes.filter(x => x.id !== r.id)})); if(selRoute===r.id) setSelRoute(null); } });
@@ -1690,29 +1699,32 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
     <div className="fade-up">
       <SectionHeader title="Daftar Toko" sub="Ketuk toko untuk drop barang, tagih, & cetak nota"
         action={<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <Btn variant="ghost" size="sm" icon="+" onClick={() => setShowAddRoute(true)}>Rute Baru</Btn>
+          <Btn variant="ghost" size="sm" icon="🗺️" onClick={() => setShowRoutes(true)}>Kelola Rute</Btn>
           <Btn icon="+" onClick={() => setShowAddStore(true)}>Tambah Toko</Btn>
         </div>} />
 
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:20 }}>
+      <div className="route-scroll" style={{ display:"flex", gap:8, overflowX:"auto", overflowY:"hidden", marginBottom:20, paddingBottom:6, WebkitOverflowScrolling:"touch", scrollbarWidth:"thin" }}>
         <button onClick={() => setSelRoute(null)}
-          style={{ padding:"9px 16px", borderRadius:99, border:`1.5px solid ${!selRoute?"var(--ink)":"var(--line-strong)"}`, background:!selRoute?"var(--ink)":"var(--surface)", color:!selRoute?"#fff":"var(--ink-2)", fontWeight:700, fontSize:13.5, cursor:"pointer", fontFamily:"var(--font)", transition:"all .15s" }}>
-          Semua Toko ({stores.length})
+          style={{ flexShrink:0, padding:"9px 16px", borderRadius:99, border:`1.5px solid ${!selRoute?"var(--ink)":"var(--line-strong)"}`, background:!selRoute?"var(--ink)":"var(--surface)", color:!selRoute?"#fff":"var(--ink-2)", fontWeight:700, fontSize:13.5, cursor:"pointer", fontFamily:"var(--font)", transition:"all .15s", whiteSpace:"nowrap" }}>
+          Semua ({stores.length})
         </button>
-        {routes.map(r => {
+        {[...routes].sort((a,b) => (b.days||[]).includes(todayDay) - (a.days||[]).includes(todayDay)).map(r => {
           const cnt = stores.filter(s => s.routeId === r.id).length;
-          const isTdy = r.days.includes(todayDay);
+          const isTdy = (r.days||[]).includes(todayDay);
           const isActive = selRoute === r.id;
           return (
             <button key={r.id} onClick={() => setSelRoute(r.id)}
-              style={{ padding:"9px 16px", borderRadius:99, border:`1.5px solid ${isActive?r.color:"var(--line-strong)"}`, background:isActive?r.color:"var(--surface)", color:isActive?"#fff":"var(--ink-2)", fontWeight:700, fontSize:13.5, cursor:"pointer", fontFamily:"var(--font)", display:"inline-flex", alignItems:"center", gap:6, transition:"all .15s" }}>
-              <span style={{width:8,height:8,borderRadius:"50%",background:isActive?"#fff":r.color,display:"inline-block"}}/>
+              style={{ flexShrink:0, padding:"9px 15px", borderRadius:99, border:`1.5px solid ${isActive?r.color:"var(--line-strong)"}`, background:isActive?r.color:"var(--surface)", color:isActive?"#fff":"var(--ink-2)", fontWeight:700, fontSize:13.5, cursor:"pointer", fontFamily:"var(--font)", display:"inline-flex", alignItems:"center", gap:7, transition:"all .15s", whiteSpace:"nowrap" }}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:isActive?"#fff":r.color,display:"inline-block",flexShrink:0}}/>
               {r.name} ({cnt})
-              {isTdy && <span style={{fontSize:11,background:isActive?"rgba(255,255,255,0.25)":"var(--green-soft)",color:isActive?"#fff":"var(--green)",padding:"1px 7px",borderRadius:99,fontWeight:800}}>Hari Ini</span>}
-              <span onClick={e=>{e.stopPropagation();askDelRoute(r)}} style={{marginLeft:4,opacity:0.6,fontSize:13}}>✕</span>
+              {isTdy && <span style={{fontSize:10.5,background:isActive?"rgba(255,255,255,0.25)":"var(--green-soft)",color:isActive?"#fff":"var(--green)",padding:"1px 7px",borderRadius:99,fontWeight:800}}>Hari Ini</span>}
             </button>
           );
         })}
+        <button onClick={() => setShowRoutes(true)}
+          style={{ flexShrink:0, padding:"9px 14px", borderRadius:99, border:"1.5px dashed var(--line-strong)", background:"var(--surface)", color:"var(--muted)", fontWeight:700, fontSize:13.5, cursor:"pointer", fontFamily:"var(--font)", whiteSpace:"nowrap" }}>
+          ⚙️ Kelola
+        </button>
       </div>
 
       <div style={{ position:"relative", marginBottom:12 }}>
@@ -1784,19 +1796,52 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
         <div style={{display:"flex",gap:10}}><Btn full variant="ghost" onClick={()=>setShowAddStore(false)}>Batal</Btn><Btn full onClick={addStore}>Simpan</Btn></div>
       </Modal>
 
-      <Modal show={showAddRoute} onClose={() => setShowAddRoute(false)} title="Buat Rute Baru">
+      <Modal show={showRoutes} onClose={() => setShowRoutes(false)} title="Kelola Rute" subtitle={`${routes.length} rute · atur nama, warna & jadwal hari`} wide>
+        <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:16 }}>
+          {routes.length === 0 && <EmptyState icon="🗺️" title="Belum ada rute" sub="Buat rute pertama untuk mengelompokkan toko" />}
+          {routes.map(r => {
+            const cnt = stores.filter(s => s.routeId === r.id).length;
+            const isTdy = (r.days||[]).includes(todayDay);
+            return (
+              <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, background:"var(--bg)", border:"1.5px solid var(--line)", borderRadius:13, padding:"12px 14px" }}>
+                <span style={{ width:14, height:14, borderRadius:"50%", background:r.color, flexShrink:0, border:"2px solid #fff", boxShadow:"0 0 0 1.5px "+r.color }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                    <p style={{ fontWeight:800, fontSize:15 }}>{r.name}</p>
+                    {isTdy && <Tag color="var(--green)">Hari Ini</Tag>}
+                    <Tag color="var(--muted)">{cnt} toko</Tag>
+                  </div>
+                  <p style={{ fontSize:12.5, color:"var(--muted)", marginTop:3, fontWeight:500 }}>
+                    {(r.days && r.days.length) ? `📅 ${r.days.join(", ")}` : "📅 Belum ada jadwal hari"}
+                  </p>
+                </div>
+                <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                  <Btn size="sm" variant="ghost" icon="✏️" onClick={() => openEditRoute(r)}>Edit</Btn>
+                  <Btn size="sm" variant="danger" onClick={() => askDelRoute(r)}>🗑</Btn>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <Btn full icon="+" onClick={openNewRoute}>Tambah Rute Baru</Btn>
+      </Modal>
+
+      <Modal show={showRouteForm} onClose={() => setShowRouteForm(false)} title={editingRouteId ? "Edit Rute" : "Buat Rute Baru"}>
         <FG label="Nama Rute"><input placeholder="Rute Selatan" value={rf.name} onChange={e=>setRf(f=>({...f,name:e.target.value}))} /></FG>
         <FG label="Warna Rute">
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {COLORS.map(c=>(<div key={c} onClick={()=>setRf(f=>({...f,color:c}))} style={{width:36,height:36,borderRadius:11,background:c,cursor:"pointer",border:rf.color===c?"3px solid var(--ink)":"3px solid transparent",transition:"all .15s"}} />))}
           </div>
         </FG>
-        <FG label="Hari Kunjungan">
+        <FG label="Jadwal Hari Kunjungan" hint="Pilih hari-hari rute ini dikunjungi. Rute yang jatuh hari ini akan ditandai 'Hari Ini'.">
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {dayNames.slice(1).map(d=>(<button key={d} onClick={()=>toggleDay(d)} style={{padding:"8px 14px",borderRadius:9,border:`1.5px solid ${rf.days.includes(d)?"var(--brand)":"var(--line-strong)"}`,background:rf.days.includes(d)?"var(--brand)":"var(--surface)",color:rf.days.includes(d)?"#fff":"var(--ink-2)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"var(--font)",transition:"all .15s"}}>{d}</button>))}
           </div>
         </FG>
-        <div style={{display:"flex",gap:10}}><Btn full variant="ghost" onClick={()=>setShowAddRoute(false)}>Batal</Btn><Btn full onClick={addRoute}>Simpan Rute</Btn></div>
+        <div style={{display:"flex",gap:10}}>
+          <Btn full variant="ghost" onClick={()=>setShowRouteForm(false)}>Batal</Btn>
+          <Btn full onClick={saveRoute}>{editingRouteId ? "Simpan Perubahan" : "Simpan Rute"}</Btn>
+        </div>
       </Modal>
 
       <Dialog />
