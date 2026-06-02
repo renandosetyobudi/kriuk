@@ -2550,7 +2550,7 @@ async function askAI({ system, messages }) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 8000, system, messages }),
+    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4096, system, messages }),
   });
   if (!response.ok) throw new Error("HTTP " + response.status);
   return parse(await response.json());
@@ -2620,28 +2620,30 @@ function Assistant({ data, setData }) {
     const omsetHari = transactions.filter(t => t.date === today && t.type === "income").reduce((s,t) => s+t.amount, 0);
     const activeC = consignments.filter(c => c.status === "active" && c.remaining > 0);
     const now = new Date();
-    const tokoData = stores.map(s => {
+    // Konteks RINGKAS agar hemat token (hindari limit): nama+rute selalu; detail stok hanya bila ada.
+    const toko = stores.map(s => {
       const rt = routes.find(r => r.id === s.routeId);
       const cs = activeC.filter(c => c.storeId === s.id);
-      const titipan = cs.map(c => { const p = products.find(x => x.id === c.productId); return { produk: p?.name, sisa: c.remaining, nilai: (p?.price||0) * c.remaining, tglDrop: c.date }; });
-      const oldest = cs.length ? cs.reduce((m,c) => c.date < m ? c.date : m, cs[0].date) : null;
-      return {
-        nama: s.name, rute: rt?.name || "-", alamat: s.address,
-        totalNilaiTitipan: titipan.reduce((a,b) => a+b.nilai, 0),
-        totalBks: titipan.reduce((a,b) => a+b.sisa, 0),
-        hariSejakDropTerlama: oldest ? Math.floor((now - new Date(oldest)) / 864e5) : null,
-        titipan,
-      };
+      const o = { nama: s.name, rute: rt?.name || "-" };
+      if (cs.length) {
+        o.bks = cs.reduce((a,c) => a + c.remaining, 0);
+        o.nilai = cs.reduce((a,c) => { const p = products.find(x => x.id === c.productId); return a + (p?.price || 0) * c.remaining; }, 0);
+        const oldest = cs.reduce((m,c) => c.date < m ? c.date : m, cs[0].date);
+        o.hari = Math.floor((now - new Date(oldest)) / 864e5);
+      }
+      return o;
     });
-    const totalTitipan = tokoData.reduce((a,b) => a+b.totalNilaiTitipan, 0);
+    const totalTitipan = toko.reduce((a,b) => a + (b.nilai || 0), 0);
     return JSON.stringify({
       tanggalHariIni: today,
       perusahaan: `${COMPANY.name} - ${COMPANY.tagline}`,
       ringkasanKeuangan: { omsetHariIni: omsetHari, omsetBulanIni: omsetBulan, pengeluaranBulanIni: keluarBulan, labaBulanIni: omsetBulan - keluarBulan, totalNilaiBarangTitipan: totalTitipan },
       produk: products.map(p => ({ nama: p.name, harga: p.price, hpp: p.costPrice })),
-      rute: routes.map(r => ({ nama: r.name, hariKunjungan: r.days })),
-      toko: tokoData,
-      transaksiTerakhir: transactions.slice(0, 100).map(t => ({ tanggal: t.date, tipe: t.type === "income" ? "masuk" : "keluar", kategori: t.category, jumlah: t.amount, catatan: t.note })),
+      rute: routes.map(r => r.name),
+      jumlahToko: stores.length,
+      keteranganToko: "field: nama, rute. bks/nilai/hari hanya untuk toko yang masih ada titipan (hari = umur drop terlama).",
+      toko,
+      transaksiTerakhir: transactions.slice(0, 25).map(t => ({ tgl: t.date, tipe: t.type === "income" ? "masuk" : "keluar", jml: t.amount, ket: t.note || t.category })),
       jumlahNota: receipts.length,
     });
   };
