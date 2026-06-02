@@ -2520,7 +2520,8 @@ const AI_ENDPOINT = "/api/ai";
 async function askAI({ system, messages }) {
   const parse = (data) => (data.content || []).map(b => (b.type === "text" ? b.text : "")).join("").trim();
 
-  // 1) Utama: backend Anda (Vercel + OpenAI) — dipakai di aplikasi yang sudah di-deploy.
+  // 1) Utama: backend Anda (Vercel + OpenAI).
+  let backendResponded = false;
   try {
     const res = await fetch(AI_ENDPOINT, {
       method: "POST",
@@ -2531,30 +2532,85 @@ async function askAI({ system, messages }) {
       },
       body: JSON.stringify({ system, messages }),
     });
+    backendResponded = true;
     if (res.ok) return parse(await res.json());
-  } catch (_) {
-    // lanjut ke cadangan
+    // Backend ADA tapi mengembalikan error — tampilkan alasan aslinya (selain 404).
+    if (res.status !== 404) {
+      let detail = "";
+      try { const j = await res.json(); detail = [j.error, j.detail].filter(Boolean).join(" — "); } catch (_) {}
+      throw new Error(`Backend /api/ai gagal (${res.status})${detail ? ": " + detail : ""}`);
+    }
+    // 404 = endpoint belum ada (mis. di dalam preview Claude) → pakai cadangan di bawah.
+  } catch (e) {
+    if (backendResponded) throw e; // error nyata dari backend Anda — jangan ditutupi
+    // fetch gagal total (jaringan) → lanjut ke cadangan
   }
 
   // 2) Cadangan: AI bawaan Claude — hanya berfungsi saat dibuka di dalam Claude.ai (untuk uji coba).
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, system, messages }),
+    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 8000, system, messages }),
   });
   if (!response.ok) throw new Error("HTTP " + response.status);
   return parse(await response.json());
 }
 
-function Assistant({ data }) {
+function Assistant({ data, setData }) {
   const { products = [], routes = [], stores = [], consignments = [], transactions = [], receipts = [] } = data;
-  const [messages, setMessages] = useState([]);
+  const [chat, setChat] = useLocalStorage("kriuk_chats_v1", { sessions: [], activeId: null });
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [loadingId, setLoadingId] = useState(null);   // sesi yang sedang menunggu balasan AI
+  const [err, setErr] = useState(null);                // { sessionId, msg }
+  const [pending, setPending] = useState(null);        // { sessionId, actions }
+  const [showHistory, setShowHistory] = useState(false);
   const scrollRef = useRef(null);
 
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, loading]);
+  const sessions = chat.sessions || [];
+  const active = sessions.find(s => s.id === chat.activeId) || null;
+  const messages = active ? active.messages : [];
+  const loading = !!loadingId;
+
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, loadingId, pending]);
+  useEffect(() => { if (!showHistory) return; const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev; }; }, [showHistory]);
+
+  // Tambah/ubah pesan pada SESI TERTENTU (mencegah balasan nyasar saat pindah chat ketika masih loading)
+  const appendToSession = (sessionId, updater, opts = {}) => {
+    setChat(c => {
+      let ss = c.sessions ? [...c.sessions] : [];
+      let idx = ss.findIndex(s => s.id === sessionId);
+      if (idx === -1) {
+        if (!opts.create) return c;
+        ss = [{ id: sessionId, title: "Chat Baru", createdAt: Date.now(), messages: [] }, ...ss];
+        idx = 0;
+      }
+      const cur = ss[idx];
+      const newMsgs = typeof updater === "function" ? updater(cur.messages) : updater;
+      let title = cur.title;
+      if ((!title || title === "Chat Baru") && newMsgs.length) {
+        const fu = newMsgs.find(m => m.role === "user");
+        if (fu) title = fu.content.slice(0, 42);
+      }
+      ss[idx] = { ...cur, messages: newMsgs, title };
+      return { ...c, sessions: ss, activeId: opts.activate ? sessionId : c.activeId };
+    });
+  };
+
+  const newChat = () => {
+    setChat(c => {
+      const ss = c.sessions || [];
+      const act = ss.find(s => s.id === c.activeId);
+      if (act && act.messages.length === 0) return c; // sudah berada di chat kosong
+      const id = uid();
+      return { sessions: [{ id, title: "Chat Baru", createdAt: Date.now(), messages: [] }, ...ss], activeId: id };
+    });
+    setShowHistory(false);
+  };
+  const switchChat = (id) => { setChat(c => ({ ...c, activeId: id })); setShowHistory(false); };
+  const deleteChat = (id) => {
+    setChat(c => { const ss = (c.sessions || []).filter(s => s.id !== id); return { ...c, sessions: ss, activeId: c.activeId === id ? (ss[0]?.id || null) : c.activeId }; });
+  };
+  const fmtChatDate = (ts) => { try { return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short" }); } catch { return ""; } };
 
   const buildContext = () => {
     const monthTx = transactions.filter(t => t.date.startsWith(thisMonth));
@@ -2596,44 +2652,294 @@ Aturan:
 - Bila perlu menghitung, hitung dari data dan tunjukkan angkanya. Boleh membuat daftar singkat bila membantu.
 - Jika data tidak cukup, katakan terus terang — jangan mengarang angka.
 - Istilah: "titipan/sisa" = barang yang masih di toko & belum terjual; "omset" = pemasukan; "laba" = pemasukan - pengeluaran; "hariSejakDropTerlama" = berapa hari sejak drop paling lama di toko itu (indikasi toko perlu dikunjungi).
-- Hari ini: ${today}.`;
+- Hari ini: ${today}.
+
+KAMU JUGA BISA MENGELOLA DATA. Jika pemilik MEMINTA menambah/mencatat/mengubah sesuatu (bukan sekadar bertanya), sertakan SATU blok kode \`\`\`json berisi {"actions":[ ... ]} di AKHIR pesan, didahului 1 kalimat ringkas konfirmasi. Jika pemilik hanya BERTANYA, jawab teks biasa TANPA blok json.
+
+Jenis aksi (pakai persis nama field-nya, uang sebagai angka polos tanpa "Rp", tanggal "YYYY-MM-DD"):
+- {"type":"add_store","name":"...","routeName":"(opsional)","address":"(opsional)","contact":"(opsional)"}
+- {"type":"add_product","name":"...","price":8000,"costPrice":4000}
+- {"type":"add_route","name":"...","days":["Senin","Kamis"]}
+- {"type":"cash_sale","storeName":"...","items":[{"product":"...","qty":5}],"date":"(opsional)"}   // penjualan tunai (bukan titipan)
+- {"type":"drop","storeName":"...","items":[{"product":"...","qty":10}],"date":"(opsional)"}   // menitipkan barang ke toko
+- {"type":"collect","storeName":"...","items":[{"product":"...","soldQty":3}],"date":"(opsional)"}   // tagih: catat jumlah titipan yang TERJUAL
+- {"type":"set_stock","storeName":"...","product":"...","qty":10}   // set sisa stok titipan di toko
+- {"type":"add_income","amount":100000,"category":"(opsional)","note":"(opsional)","date":"(opsional)"}
+- {"type":"add_expense","amount":50000,"category":"(opsional)","note":"(opsional)","date":"(opsional)"}
+- {"type":"add_note","content":"...","pinned":false}
+
+Aturan aksi:
+- Untuk cash_sale/drop/collect/set_stock, nama toko & produk HARUS yang SUDAH ADA di DATA (atau dibuat di blok yang sama lewat add_store/add_product). Jika belum ada & tidak dibuat, jangan dipaksakan.
+- Jangan membuat aksi yang tidak diminta. Jika nama/jumlah tidak jelas, tanyakan dulu (tanpa blok json).
+- Boleh menggabungkan banyak aksi dalam satu array "actions".
+- PENTING saat pemilik memberi DAFTAR data untuk dimasukkan: LANGSUNG keluarkan blok json berisi semua aksinya, didahului 1 kalimat singkat saja. JANGAN membuat tabel ringkasan dan JANGAN bertanya "benar?"/"lanjut?" lebih dulu — aplikasi sudah menampilkan kartu konfirmasi (Terapkan/Batal) untuk pemilik setujui.
+- JANGAN PERNAH menjawab bahwa kamu "tidak bisa mengirim/menginput data ke aplikasi". Tugasmu cukup menghasilkan blok json; aplikasi yang menerapkannya.
+- Tulis tiap objek aksi ringkas dalam SATU baris (tanpa spasi berlebih) agar hemat & tidak terpotong.
+- Jika daftarnya SANGAT panjang (lebih dari ~20 toko/aksi), proses sebagian dulu (mis. 15–20 aksi) lalu beri tahu pemilik untuk mengirim sisanya, supaya balasan tidak terpotong.`;
+
+  // ── Pengelolaan data lewat AI: parsing aksi + eksekusi (dengan konfirmasi) ──
+  const stripJson = (text) => {
+    let t = text || "";
+    t = t.replace(/```(?:json)?\s*[\s\S]*?```/gi, "");   // blok ```json``` tertutup
+    t = t.replace(/```(?:json)?\s*[\s\S]*$/i, "");        // blok terbuka (terpotong) sampai akhir
+    const idx = t.indexOf('"actions"');                   // objek {"actions":...} telanjang yang tersisa
+    if (idx !== -1) { const b = t.lastIndexOf("{", idx); if (b !== -1) t = t.slice(0, b); }
+    return t.trim();
+  };
+
+  // Mengembalikan { actions, complete } atau null. Tahan terhadap balasan AI yang terpotong:
+  // tetap memungut setiap objek aksi {...} yang lengkap walau array/penutupnya hilang.
+  const extractActions = (text) => {
+    const src = text || "";
+    let body = null;
+    const closed = src.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (closed) body = closed[1];
+    else { const open = src.match(/```(?:json)?\s*([\s\S]*)$/i); if (open) body = open[1]; }
+    if (!body) {
+      const ai = src.indexOf('"actions"');
+      if (ai !== -1) { const b = src.lastIndexOf("{", ai); body = src.slice(b === -1 ? ai : b); }
+    }
+    if (!body) return null;
+
+    // Coba parse penuh lebih dulu (kasus normal).
+    try { const obj = JSON.parse(body.trim()); if (obj && Array.isArray(obj.actions) && obj.actions.length) return { actions: obj.actions, complete: true }; } catch (_) {}
+
+    // Fallback tahan-potong: pungut objek {...} lengkap di dalam array "actions".
+    const start = body.indexOf("[");
+    const region = start !== -1 ? body.slice(start + 1) : body;
+    const actions = [];
+    let depth = 0, cur = "", inStr = false, prev = "";
+    for (const ch of region) {
+      if (inStr) { cur += ch; if (ch === '"' && prev !== "\\") inStr = false; prev = ch; continue; }
+      if (ch === '"') { inStr = true; cur += ch; prev = ch; continue; }
+      if (ch === "{") { depth++; cur += ch; prev = ch; continue; }
+      if (ch === "}") { depth--; cur += ch; if (depth === 0) { try { const o = JSON.parse(cur.trim()); if (o && o.type) actions.push(o); } catch (_) {} cur = ""; } prev = ch; continue; }
+      if (depth > 0) cur += ch;
+      prev = ch;
+    }
+    return actions.length ? { actions, complete: false } : null;
+  };
+
+  const describeAction = (a) => {
+    const items = (a.items || []).map(i => `${i.soldQty ?? i.qty} ${i.product}`).join(", ");
+    switch (a.type) {
+      case "add_store": return `🏪 Tambah toko "${a.name}"${a.routeName ? ` (rute ${a.routeName})` : ""}`;
+      case "add_product": return `🍟 Tambah produk "${a.name}" — jual ${fmt(+a.price || 0)}${a.costPrice ? `, HPP ${fmt(+a.costPrice)}` : ""}`;
+      case "add_route": return `🛣️ Tambah rute "${a.name}"${Array.isArray(a.days) && a.days.length ? ` (${a.days.join(", ")})` : ""}`;
+      case "cash_sale": return `💵 Jual tunai di ${a.storeName}: ${items}`;
+      case "drop": return `📦 Drop titipan di ${a.storeName}: ${items}`;
+      case "collect": return `🤝 Tagih di ${a.storeName} (terjual): ${items}`;
+      case "set_stock": return `✏️ Set stok ${a.product} di ${a.storeName} = ${a.qty} bks`;
+      case "add_income": return `🟢 Catat pemasukan ${fmt(+a.amount || 0)}${a.note ? ` — ${a.note}` : ""}`;
+      case "add_expense": return `🔴 Catat pengeluaran ${fmt(+a.amount || 0)}${a.note ? ` — ${a.note}` : ""}`;
+      case "add_note": return `📝 Catatan: "${String(a.content || "").slice(0, 70)}"`;
+      default: return `Aksi: ${a.type}`;
+    }
+  };
+
+  const applyActions = (actions) => {
+    const nd = {
+      ...data,
+      products: [...products], routes: [...routes], stores: [...stores],
+      consignments: [...consignments], transactions: [...transactions],
+      notes: [...(data.notes || [])], receipts: [...receipts],
+      receiptCounter: data.receiptCounter || 1,
+    };
+    const results = [];
+    const palette = ["#E07B1A", "#D6453F", "#138A5E", "#D89215", "#2563C9", "#7C4DD6", "#C2611A"];
+    const norm = (s) => String(s || "").trim().toLowerCase();
+    const findStore = (n) => nd.stores.find(s => norm(s.name) === norm(n)) || (norm(n) && nd.stores.find(s => norm(s.name).includes(norm(n))));
+    const findProduct = (n) => nd.products.find(p => norm(p.name) === norm(n)) || (norm(n) && nd.products.find(p => norm(p.name).includes(norm(n))));
+    const findRoute = (n) => n ? (nd.routes.find(r => norm(r.name) === norm(n)) || nd.routes.find(r => norm(r.name).includes(norm(n)))) : null;
+
+    for (const a of (actions || [])) {
+      try {
+        switch (a.type) {
+          case "add_product": {
+            if (!a.name || a.price == null) { results.push("⚠️ Produk gagal: nama/harga kurang."); break; }
+            nd.products = [...nd.products, { id: uid(), name: a.name, price: +a.price, costPrice: +(a.costPrice || 0) }];
+            results.push(`✓ Produk "${a.name}" ditambahkan.`); break;
+          }
+          case "add_route": {
+            if (!a.name) { results.push("⚠️ Rute gagal: nama kurang."); break; }
+            nd.routes = [...nd.routes, { id: uid(), name: a.name, color: a.color || palette[nd.routes.length % palette.length], days: Array.isArray(a.days) ? a.days : [] }];
+            results.push(`✓ Rute "${a.name}" ditambahkan.`); break;
+          }
+          case "add_store": {
+            if (!a.name) { results.push("⚠️ Toko gagal: nama kurang."); break; }
+            const rt = findRoute(a.routeName);
+            nd.stores = [...nd.stores, { id: uid(), createdAt: Date.now(), name: a.name, address: a.address || "", contact: a.contact || "", routeId: rt ? rt.id : "" }];
+            results.push(`✓ Toko "${a.name}" ditambahkan${rt ? ` (rute ${rt.name})` : ""}.`); break;
+          }
+          case "add_income":
+          case "add_expense": {
+            if (a.amount == null) { results.push("⚠️ Transaksi gagal: jumlah kurang."); break; }
+            const t = { id: uid(), type: a.type === "add_income" ? "income" : "expense", category: a.category || "Lain-lain", amount: +a.amount, date: a.date || today, note: a.note || "" };
+            nd.transactions = [t, ...nd.transactions];
+            results.push(`✓ ${t.type === "income" ? "Pemasukan" : "Pengeluaran"} ${fmt(t.amount)} dicatat.`); break;
+          }
+          case "add_note": {
+            if (!a.content) { results.push("⚠️ Catatan gagal: isi kurang."); break; }
+            nd.notes = [{ id: uid(), date: a.date || today, content: a.content, pinned: !!a.pinned }, ...nd.notes];
+            results.push("✓ Catatan ditambahkan."); break;
+          }
+          case "cash_sale":
+          case "drop": {
+            const store = findStore(a.storeName);
+            if (!store) { results.push(`⚠️ ${a.type}: toko "${a.storeName}" tidak ditemukan.`); break; }
+            const recItems = []; let total = 0;
+            for (const it of (a.items || [])) {
+              const p = findProduct(it.product); const qty = +it.qty;
+              if (!p || !(qty > 0)) { results.push(`⚠️ Produk "${it.product}" tidak ditemukan / qty salah.`); continue; }
+              recItems.push({ productId: p.id, name: p.name, qty, price: p.price }); total += qty * p.price;
+              if (a.type === "drop") {
+                const ex = nd.consignments.find(c => c.storeId === store.id && c.productId === p.id && c.status === "active");
+                if (ex) nd.consignments = nd.consignments.map(c => c.id === ex.id ? { ...c, deposited: c.deposited + qty, remaining: c.remaining + qty } : c);
+                else nd.consignments = [...nd.consignments, { id: uid(), storeId: store.id, productId: p.id, deposited: qty, remaining: qty, date: a.date || today, status: "active" }];
+              }
+            }
+            if (!recItems.length) { results.push(`⚠️ ${a.type}: tidak ada item valid.`); break; }
+            if (a.type === "cash_sale") recItems.forEach(ri => { nd.transactions = [{ id: uid(), type: "income", category: "Penjualan", amount: ri.qty * ri.price, date: a.date || today, note: `${store.name} - ${ri.name} ${ri.qty}bks (tunai)` }, ...nd.transactions]; });
+            const ntype = a.type === "drop" ? "drop" : "cash";
+            const notaNo = genNotaNo(ntype, nd.receiptCounter);
+            nd.receipts = [{ id: uid(), notaNo, type: ntype, date: a.date || today, storeId: store.id, storeName: store.name, storeAddress: store.address, storeContact: store.contact, items: recItems, total }, ...nd.receipts];
+            nd.receiptCounter += 1;
+            results.push(`✓ ${a.type === "drop" ? "Drop" : "Jual tunai"} di ${store.name}: ${recItems.map(r => `${r.qty} ${r.name}`).join(", ")} = ${fmt(total)} (nota ${notaNo}).`); break;
+          }
+          case "set_stock": {
+            const store = findStore(a.storeName); const p = findProduct(a.product);
+            if (!store || !p) { results.push("⚠️ Set stok: toko/produk tidak ditemukan."); break; }
+            const q = Math.max(0, +a.qty || 0);
+            const ex = nd.consignments.find(c => c.storeId === store.id && c.productId === p.id && c.status === "active");
+            if (ex) nd.consignments = nd.consignments.map(c => c.id === ex.id ? { ...c, deposited: q, remaining: q, status: q <= 0 ? "closed" : "active" } : c);
+            else if (q > 0) nd.consignments = [...nd.consignments, { id: uid(), storeId: store.id, productId: p.id, deposited: q, remaining: q, date: today, status: "active" }];
+            results.push(`✓ Stok ${p.name} di ${store.name} di-set ${q} bks.`); break;
+          }
+          case "collect": {
+            const store = findStore(a.storeName);
+            if (!store) { results.push(`⚠️ Tagih: toko "${a.storeName}" tidak ditemukan.`); break; }
+            const recItems = []; let total = 0;
+            for (const it of (a.items || [])) {
+              const p = findProduct(it.product); const sold = +(it.soldQty ?? it.qty);
+              if (!p || !(sold > 0)) { results.push(`⚠️ Tagih: produk "${it.product}" salah.`); continue; }
+              const c = nd.consignments.find(x => x.storeId === store.id && x.productId === p.id && x.status === "active");
+              if (!c) { results.push(`⚠️ Tagih: ${p.name} belum ada titipan di ${store.name}.`); continue; }
+              const s = Math.min(sold, c.remaining); const newRem = c.remaining - s;
+              nd.consignments = nd.consignments.map(x => x.id === c.id ? { ...x, deposited: newRem, remaining: newRem, status: newRem <= 0 ? "closed" : "active" } : x);
+              nd.transactions = [{ id: uid(), type: "income", category: "Penjualan", amount: s * p.price, date: a.date || today, note: `${store.name} - ${p.name} ${s}bks` }, ...nd.transactions];
+              recItems.push({ productId: p.id, name: p.name, qty: s, price: p.price }); total += s * p.price;
+            }
+            if (!recItems.length) { results.push("⚠️ Tagih: tidak ada item valid."); break; }
+            const notaNo = genNotaNo("payment", nd.receiptCounter);
+            nd.receipts = [{ id: uid(), notaNo, type: "payment", date: a.date || today, storeId: store.id, storeName: store.name, storeAddress: store.address, storeContact: store.contact, items: recItems, total }, ...nd.receipts];
+            nd.receiptCounter += 1;
+            results.push(`✓ Tagih ${store.name}: ${recItems.map(r => `${r.qty} ${r.name}`).join(", ")} = ${fmt(total)} (nota ${notaNo}).`); break;
+          }
+          default: results.push(`⚠️ Aksi tidak dikenal: ${a.type}`);
+        }
+      } catch (err) { results.push(`⚠️ Gagal memproses aksi: ${String(err.message || err)}`); }
+    }
+    setData(nd);
+    return results;
+  };
 
   const send = async (q) => {
     const question = (q ?? input).trim();
     if (!question || loading) return;
-    setError(null);
-    const newMsgs = [...messages, { role: "user", content: question }];
-    setMessages(newMsgs);
+    setErr(null);
+    setPending(null);
+    // Tentukan sesi tujuan (buat & aktifkan bila belum ada), lalu KUNCI balasan ke sesi ini
+    const targetId = active ? active.id : uid();
+    const base = active ? active.messages : [];
+    const newMsgs = [...base, { role: "user", content: question }];
+    appendToSession(targetId, () => newMsgs, { create: true, activate: true });
     setInput("");
-    setLoading(true);
+    setLoadingId(targetId);
     try {
       const reply = await askAI({
         system: SYSTEM + "\n\nDATA (JSON):\n" + buildContext(),
         messages: newMsgs.slice(-12).map(m => ({ role: m.role, content: m.content })),
       });
-      setMessages(m => [...m, { role: "assistant", content: reply || "(maaf, tidak ada jawaban)" }]);
+      const parsed = extractActions(reply || "");
+      const actions = parsed ? parsed.actions : null;
+      let prose = stripJson(reply || "");
+      if (actions) {
+        if (!parsed.complete) prose += (prose ? "\n\n" : "") + "⚠️ Daftarnya panjang dan sepertinya terpotong — saya tampilkan yang berhasil terbaca di bawah. Jika ada yang kurang, kirim sisanya secara terpisah.";
+      } else if (/```|"actions"/.test(reply || "")) {
+        prose += (prose ? "\n\n" : "") + "⚠️ Daftarnya terlalu panjang sehingga balasan terpotong dan gagal dibaca. Coba kirim per 5–8 item agar muat.";
+      }
+      appendToSession(targetId, m => [...m, { role: "assistant", content: prose || (actions ? "Saya siapkan perubahannya — mohon konfirmasi di bawah." : "(maaf, tidak ada jawaban)") }]);
+      if (actions) setPending({ sessionId: targetId, actions });
     } catch (e) {
-      setError("Tidak bisa terhubung ke layanan AI. Fitur ini otomatis berfungsi saat aplikasi dibuka di Claude. Untuk aplikasi yang Anda host sendiri, sambungkan ke API key + backend Anda (lihat catatan di kode).");
+      const msg = String(e.message || e);
+      setErr({ sessionId: targetId, msg: msg.startsWith("Backend") ? msg : "Tidak bisa terhubung ke layanan AI. Pastikan backend /api/ai sudah terpasang (lihat catatan di kode)." });
     } finally {
-      setLoading(false);
+      setLoadingId(null);
     }
+  };
+
+  const confirmActions = () => {
+    if (!pending) return;
+    const { sessionId, actions } = pending;
+    setPending(null);
+    const results = applyActions(actions);
+    appendToSession(sessionId, m => [...m, { role: "assistant", content: "✅ Selesai diterapkan:\n" + results.join("\n") }]);
+  };
+  const cancelActions = () => {
+    if (!pending) return;
+    const { sessionId } = pending;
+    setPending(null);
+    appendToSession(sessionId, m => [...m, { role: "assistant", content: "Baik, perubahan dibatalkan." }]);
   };
 
   const suggestions = [
     "Toko mana yang paling lama belum dikunjungi?",
     "Berapa omset dan laba bulan ini?",
-    "Toko mana nilai titipannya paling besar?",
-    "Produk apa yang stoknya paling banyak beredar?",
+    "Catat penjualan tunai 5 Kriuk Original di Warung Bu Sari",
+    "Catat pengeluaran 50.000 untuk beli bensin",
   ];
+
+  const loadingThis = !!(active && loadingId === active.id);
 
   return (
     <div className="fade-up">
-      <SectionHeader title="Asisten AI" sub="Tanya apa saja tentang data bisnismu"
-        action={messages.length > 0 ? <Btn variant="ghost" size="sm" icon="🗑" onClick={() => { setMessages([]); setError(null); }}>Bersihkan</Btn> : null} />
+      <SectionHeader title="Asisten AI" sub="Tanya atau perintahkan apa saja tentang data bisnismu"
+        action={<div style={{ display: "flex", gap: 8 }}>
+          {sessions.length > 0 && <Btn variant="ghost" size="sm" icon="🕘" onClick={() => setShowHistory(v => !v)}>Riwayat</Btn>}
+          <Btn variant="outline" size="sm" icon="＋" onClick={newChat}>Chat Baru</Btn>
+        </div>} />
+
+      {showHistory && (
+        <>
+          <div onClick={() => setShowHistory(false)} style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(33,26,18,0.42)", backdropFilter: "blur(4px)" }} />
+          <div style={{ position: "fixed", top: 0, left: 0, bottom: 0, width: "min(330px, 86vw)", zIndex: 1201, background: "var(--surface)", borderRight: "1.5px solid var(--line)", boxShadow: "2px 0 30px rgba(33,26,18,0.18)", display: "flex", flexDirection: "column", animation: "drawerIn .22s ease" }}>
+            <div style={{ padding: "16px 16px 12px", borderBottom: "1.5px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <p style={{ fontSize: 15, fontWeight: 800 }}>🕘 Riwayat Chat</p>
+              <button onClick={() => setShowHistory(false)} title="Tutup" style={{ width: 32, height: 32, borderRadius: 9, border: "1.5px solid var(--line)", background: "var(--bg)", cursor: "pointer", fontSize: 14, color: "var(--ink-2)" }}>✕</button>
+            </div>
+            <div style={{ padding: 12 }}>
+              <Btn full variant="primary" icon="＋" onClick={newChat}>Chat Baru</Btn>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+              {sessions.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--muted)", padding: "6px", fontWeight: 500 }}>Belum ada chat tersimpan.</p>
+              ) : sessions.map(s => (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", borderRadius: 11, border: `1.5px solid ${s.id === chat.activeId ? "var(--brand-tint)" : "var(--line)"}`, background: s.id === chat.activeId ? "var(--brand-soft)" : "var(--bg)" }}>
+                  <button onClick={() => switchChat(s.id)} style={{ flex: 1, textAlign: "left", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--font)", minWidth: 0, padding: 0 }}>
+                    <p style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title || "Chat Baru"}</p>
+                    <p style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>{fmtChatDate(s.createdAt)} · {s.messages.length} pesan</p>
+                  </button>
+                  <button onClick={() => deleteChat(s.id)} title="Hapus chat" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--red)", cursor: "pointer", fontSize: 13 }}>🗑</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       <Card style={{ padding: 0, overflow: "hidden" }}>
         <div ref={scrollRef} style={{ minHeight: 300, maxHeight: "52vh", overflowY: "auto", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-          {messages.length === 0 && !loading && (
+          {messages.length === 0 && !loadingThis && (
             <div style={{ textAlign: "center", margin: "auto 0", padding: "10px 6px" }}>
               <div style={{ width: 60, height: 60, borderRadius: 18, background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, margin: "0 auto 14px", boxShadow: "0 10px 24px rgba(224,123,26,0.28)" }}>🤖</div>
               <p style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Halo! Saya asisten bisnis Anda</p>
@@ -2661,7 +2967,7 @@ Aturan:
             </div>
           ))}
 
-          {loading && (
+          {loadingThis && (
             <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
               <div style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", color: "#fff" }}>🤖</div>
               <div style={{ padding: "12px 16px", borderRadius: 14, borderTopLeftRadius: 4, background: "var(--bg-2)", border: "1.5px solid var(--line)", color: "var(--muted)", fontSize: 13.5, fontWeight: 600 }}>
@@ -2670,28 +2976,46 @@ Aturan:
             </div>
           )}
 
-          {error && (
+          {err && active && err.sessionId === active.id && (
             <div style={{ background: "var(--red-soft)", border: "1.5px solid #F2C7C3", borderRadius: 12, padding: "11px 14px", fontSize: 13, color: "var(--red)", fontWeight: 600, lineHeight: 1.5 }}>
-              ⚠️ {error}
+              ⚠️ {err.msg}
+            </div>
+          )}
+
+          {pending && active && pending.sessionId === active.id && (
+            <div style={{ background: "var(--brand-soft)", border: "2px solid var(--brand-tint)", borderRadius: 14, padding: 16 }}>
+              <p style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>🤖 Konfirmasi perubahan data ({pending.actions.length})</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14, maxHeight: 280, overflowY: "auto" }}>
+                {pending.actions.map((a, i) => (
+                  <div key={i} style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>
+                    {describeAction(a)}
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn full variant="ghost" onClick={cancelActions}>Batal</Btn>
+                <Btn full variant="success" icon="✓" onClick={confirmActions}>Terapkan</Btn>
+              </div>
             </div>
           )}
         </div>
 
         <div style={{ borderTop: "1.5px solid var(--line)", padding: 12, display: "flex", gap: 8, background: "var(--surface)" }}>
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Tulis pertanyaan…" disabled={loading} style={{ flex: 1 }} />
+            placeholder="Tulis perintah atau pertanyaan…" disabled={loading} style={{ flex: 1 }} />
           <Btn onClick={() => send()} disabled={loading || !input.trim()} icon="➤">Kirim</Btn>
         </div>
       </Card>
 
       <p style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500, textAlign: "center", lineHeight: 1.6, marginTop: 14 }}>
-        🤖 Jawaban dibuat AI dari data aplikasi — selalu cek angka penting sebelum mengambil keputusan.<br/>
-        Demo ini memakai AI bawaan Claude. Untuk aplikasi yang Anda host sendiri, perlu disambungkan ke API key + backend (lihat catatan di kode).
+        🤖 AI bisa menjawab pertanyaan & mengelola data (tambah toko/produk, catat penjualan, dll). Perubahan selalu minta konfirmasi dulu — tetap cek angka penting.<br/>
+        Demo ini memakai AI bawaan Claude. Untuk aplikasi yang Anda host sendiri, sambungkan ke API key + backend (lihat catatan di kode).
       </p>
 
       <style>{`
         @keyframes aiblink { 0%,100%{opacity:.4} 50%{opacity:1} }
         .ai-typing { animation: aiblink 1.2s ease-in-out infinite; }
+        @keyframes drawerIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
       `}</style>
     </div>
   );
