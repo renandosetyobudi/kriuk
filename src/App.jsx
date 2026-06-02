@@ -2559,6 +2559,7 @@ async function askAI({ system, messages }) {
 function Assistant({ data, setData }) {
   const { products = [], routes = [], stores = [], consignments = [], transactions = [], receipts = [] } = data;
   const [chat, setChat] = useLocalStorage("kriuk_chats_v1", { sessions: [], activeId: null });
+  const [aiMem, setAiMem] = useLocalStorage("kriuk_ai_memory_v1", { facts: [] });
   const [input, setInput] = useState("");
   const [loadingId, setLoadingId] = useState(null);   // sesi yang sedang menunggu balasan AI
   const [err, setErr] = useState(null);                // { sessionId, msg }
@@ -2667,6 +2668,12 @@ Jenis aksi (pakai persis nama field-nya, uang sebagai angka polos tanpa "Rp", ta
 - {"type":"add_income","amount":100000,"category":"(opsional)","note":"(opsional)","date":"(opsional)"}
 - {"type":"add_expense","amount":50000,"category":"(opsional)","note":"(opsional)","date":"(opsional)"}
 - {"type":"add_note","content":"...","pinned":false}
+- {"type":"update_store","name":"(nama toko yang sudah ada)","newName":"(opsional)","routeName":"(opsional)","address":"(opsional)","contact":"(opsional)"}   // PERBAIKI toko yang sudah ada
+- {"type":"update_product","name":"(produk yang sudah ada)","price":12000,"costPrice":5000,"newName":"(opsional)"}
+- {"type":"delete_store","name":"...","onlyEmpty":true}   // hapus toko; onlyEmpty=true hanya menghapus yang TIDAK punya stok (untuk bersihkan duplikat)
+- {"type":"delete_product","name":"..."}
+- {"type":"remember","fact":"..."}   // simpan preferensi/kebiasaan/koreksi pemilik agar kamu adaptasi ke depan
+- {"type":"forget","fact":"(kata kunci)"}   // atau {"type":"forget","all":true}
 
 Aturan aksi:
 - Untuk cash_sale/drop/collect/set_stock, nama toko & produk HARUS yang SUDAH ADA di DATA (atau dibuat di blok yang sama lewat add_store/add_product). Jika belum ada & tidak dibuat, jangan dipaksakan.
@@ -2675,7 +2682,11 @@ Aturan aksi:
 - PENTING saat pemilik memberi DAFTAR data untuk dimasukkan: LANGSUNG keluarkan blok json berisi semua aksinya, didahului 1 kalimat singkat saja. JANGAN membuat tabel ringkasan dan JANGAN bertanya "benar?"/"lanjut?" lebih dulu — aplikasi sudah menampilkan kartu konfirmasi (Terapkan/Batal) untuk pemilik setujui.
 - JANGAN PERNAH menjawab bahwa kamu "tidak bisa mengirim/menginput data ke aplikasi". Tugasmu cukup menghasilkan blok json; aplikasi yang menerapkannya.
 - Tulis tiap objek aksi ringkas dalam SATU baris (tanpa spasi berlebih) agar hemat & tidak terpotong.
-- Jika daftarnya SANGAT panjang (lebih dari ~20 toko/aksi), proses sebagian dulu (mis. 15–20 aksi) lalu beri tahu pemilik untuk mengirim sisanya, supaya balasan tidak terpotong.`;
+- Jika daftarnya SANGAT panjang (lebih dari ~20 toko/aksi), proses sebagian dulu (mis. 15–20 aksi) lalu beri tahu pemilik untuk mengirim sisanya, supaya balasan tidak terpotong.
+- MEMPERBAIKI / MENGOREKSI data yang SUDAH ADA: gunakan update_store / update_product / delete_store — JANGAN memakai add_store/add_product lagi (itu bisa membuat DUPLIKAT). Contoh: kalau toko sudah ada tapi rutenya salah/kosong → pakai update_store dengan routeName, bukan add_store.
+- Jika pemilik menyebut SATU rute untuk sekelompok toko (mis. "rute=mesuji"), WAJIB sertakan "routeName":"Mesuji" pada SETIAP add_store/update_store toko tersebut. Rute yang belum ada akan dibuat otomatis.
+- Untuk membersihkan toko duplikat, gunakan delete_store dengan "onlyEmpty":true (menghapus yang tanpa stok, menyisakan yang ada stok).
+- BELAJAR & ADAPTASI: bila pemilik mengajari sebuah kebiasaan/istilah/preferensi (mis. "k berarti ribuan", "produk default Kriuk", "tulis nama toko huruf besar"), ATAU mengoreksi kamu, sertakan aksi {"type":"remember","fact":"..."} (ringkas) agar kamu menerapkannya di chat berikutnya. Selalu patuhi bagian "INGATAN & PREFERENSI PEMILIK" jika ada.`;
 
   // ── Pengelolaan data lewat AI: parsing aksi + eksekusi (dengan konfirmasi) ──
   const stripJson = (text) => {
@@ -2733,6 +2744,12 @@ Aturan aksi:
       case "add_income": return `🟢 Catat pemasukan ${fmt(+a.amount || 0)}${a.note ? ` — ${a.note}` : ""}`;
       case "add_expense": return `🔴 Catat pengeluaran ${fmt(+a.amount || 0)}${a.note ? ` — ${a.note}` : ""}`;
       case "add_note": return `📝 Catatan: "${String(a.content || "").slice(0, 70)}"`;
+      case "update_store": return `✏️ Ubah toko "${a.name || a.storeName}"${a.newName ? ` → "${a.newName}"` : ""}${a.routeName ? ` (rute ${a.routeName})` : ""}`;
+      case "update_product": return `✏️ Ubah produk "${a.name}"${a.newName ? ` → "${a.newName}"` : ""}${a.price != null ? ` — jual ${fmt(+a.price)}` : ""}`;
+      case "delete_store": return `🗑 Hapus toko "${a.name || a.storeName}"${a.onlyEmpty ? " (yang kosong)" : ""}`;
+      case "delete_product": return `🗑 Hapus produk "${a.name}"`;
+      case "remember": return `🧠 Ingat: "${String(a.fact || a.content || "").slice(0, 80)}"`;
+      case "forget": return a.all ? "🧠 Lupakan semua memori" : `🧠 Lupakan: "${String(a.fact || a.content || "").slice(0, 60)}"`;
       default: return `Aksi: ${a.type}`;
     }
   };
@@ -2746,30 +2763,54 @@ Aturan aksi:
       receiptCounter: data.receiptCounter || 1,
     };
     const results = [];
+    let memFacts = [...(aiMem.facts || [])];
+    let memChanged = false;
     const palette = ["#E07B1A", "#D6453F", "#138A5E", "#D89215", "#2563C9", "#7C4DD6", "#C2611A"];
     const norm = (s) => String(s || "").trim().toLowerCase();
     const findStore = (n) => nd.stores.find(s => norm(s.name) === norm(n)) || (norm(n) && nd.stores.find(s => norm(s.name).includes(norm(n))));
+    const findStoreExact = (n) => nd.stores.find(s => norm(s.name) === norm(n));
     const findProduct = (n) => nd.products.find(p => norm(p.name) === norm(n)) || (norm(n) && nd.products.find(p => norm(p.name).includes(norm(n))));
     const findRoute = (n) => n ? (nd.routes.find(r => norm(r.name) === norm(n)) || nd.routes.find(r => norm(r.name).includes(norm(n)))) : null;
+    const ensureRoute = (name) => {
+      if (!name) return null;
+      let r = findRoute(name);
+      if (!r) { r = { id: uid(), name: String(name).trim(), color: palette[nd.routes.length % palette.length], days: [] }; nd.routes = [...nd.routes, r]; }
+      return r;
+    };
 
     for (const a of (actions || [])) {
       try {
         switch (a.type) {
           case "add_product": {
             if (!a.name || a.price == null) { results.push("⚠️ Produk gagal: nama/harga kurang."); break; }
-            nd.products = [...nd.products, { id: uid(), name: a.name, price: +a.price, costPrice: +(a.costPrice || 0) }];
-            results.push(`✓ Produk "${a.name}" ditambahkan.`); break;
+            const ex = nd.products.find(p => norm(p.name) === norm(a.name));
+            if (ex) {
+              nd.products = nd.products.map(p => p.id === ex.id ? { ...p, price: +a.price, costPrice: a.costPrice != null ? +a.costPrice : p.costPrice } : p);
+              results.push(`• Produk "${a.name}" sudah ada — harga diperbarui (${fmt(+a.price)}).`);
+            } else {
+              nd.products = [...nd.products, { id: uid(), name: a.name, price: +a.price, costPrice: +(a.costPrice || 0) }];
+              results.push(`✓ Produk "${a.name}" ditambahkan.`);
+            }
+            break;
           }
           case "add_route": {
             if (!a.name) { results.push("⚠️ Rute gagal: nama kurang."); break; }
+            if (findRoute(a.name)) { results.push(`• Rute "${a.name}" sudah ada (dilewati).`); break; }
             nd.routes = [...nd.routes, { id: uid(), name: a.name, color: a.color || palette[nd.routes.length % palette.length], days: Array.isArray(a.days) ? a.days : [] }];
             results.push(`✓ Rute "${a.name}" ditambahkan.`); break;
           }
           case "add_store": {
             if (!a.name) { results.push("⚠️ Toko gagal: nama kurang."); break; }
-            const rt = findRoute(a.routeName);
-            nd.stores = [...nd.stores, { id: uid(), createdAt: Date.now(), name: a.name, address: a.address || "", contact: a.contact || "", routeId: rt ? rt.id : "" }];
-            results.push(`✓ Toko "${a.name}" ditambahkan${rt ? ` (rute ${rt.name})` : ""}.`); break;
+            const rt = a.routeName ? ensureRoute(a.routeName) : null;
+            const existing = findStoreExact(a.name);
+            if (existing) {
+              nd.stores = nd.stores.map(s => s.id === existing.id ? { ...s, routeId: rt ? rt.id : s.routeId, address: a.address || s.address, contact: a.contact || s.contact } : s);
+              results.push(`• Toko "${a.name}" sudah ada — diperbarui${rt ? ` (rute ${rt.name})` : ""} (tidak diduplikat).`);
+            } else {
+              nd.stores = [...nd.stores, { id: uid(), createdAt: Date.now(), name: a.name, address: a.address || "", contact: a.contact || "", routeId: rt ? rt.id : "" }];
+              results.push(`✓ Toko "${a.name}" ditambahkan${rt ? ` (rute ${rt.name})` : ""}.`);
+            }
+            break;
           }
           case "add_income":
           case "add_expense": {
@@ -2835,11 +2876,59 @@ Aturan aksi:
             nd.receiptCounter += 1;
             results.push(`✓ Tagih ${store.name}: ${recItems.map(r => `${r.qty} ${r.name}`).join(", ")} = ${fmt(total)} (nota ${notaNo}).`); break;
           }
+          case "update_store": {
+            const target = findStoreExact(a.name || a.storeName) || findStore(a.name || a.storeName);
+            if (!target) { results.push(`⚠️ Update toko: "${a.name || a.storeName}" tidak ditemukan.`); break; }
+            const rt = a.routeName ? ensureRoute(a.routeName) : null;
+            nd.stores = nd.stores.map(s => s.id === target.id ? { ...s, name: a.newName || s.name, routeId: rt ? rt.id : s.routeId, address: a.address != null ? a.address : s.address, contact: a.contact != null ? a.contact : s.contact } : s);
+            results.push(`✓ Toko "${target.name}" diperbarui${a.newName ? ` → "${a.newName}"` : ""}${rt ? ` (rute ${rt.name})` : ""}.`); break;
+          }
+          case "update_product": {
+            const target = nd.products.find(p => norm(p.name) === norm(a.name)) || nd.products.find(p => norm(a.name) && norm(p.name).includes(norm(a.name)));
+            if (!target) { results.push(`⚠️ Update produk: "${a.name}" tidak ditemukan.`); break; }
+            nd.products = nd.products.map(p => p.id === target.id ? { ...p, name: a.newName || p.name, price: a.price != null ? +a.price : p.price, costPrice: a.costPrice != null ? +a.costPrice : p.costPrice } : p);
+            results.push(`✓ Produk "${target.name}" diperbarui.`); break;
+          }
+          case "delete_store": {
+            const nm = norm(a.name || a.storeName);
+            if (!nm) { results.push("⚠️ Hapus toko: nama kurang."); break; }
+            const matches = nd.stores.filter(s => norm(s.name) === nm);
+            const hasStock = (s) => nd.consignments.some(c => c.storeId === s.id && c.status === "active" && c.remaining > 0);
+            const toDelete = a.onlyEmpty ? matches.filter(s => !hasStock(s)) : matches;
+            if (!toDelete.length) { results.push(`⚠️ Hapus toko: tidak ada "${a.name || a.storeName}"${a.onlyEmpty ? " yang kosong" : ""} untuk dihapus.`); break; }
+            const ids = new Set(toDelete.map(s => s.id));
+            nd.stores = nd.stores.filter(s => !ids.has(s.id));
+            nd.consignments = nd.consignments.filter(c => !ids.has(c.storeId));
+            results.push(`✓ ${toDelete.length} toko "${a.name || a.storeName}"${a.onlyEmpty ? " (kosong)" : ""} dihapus.`); break;
+          }
+          case "delete_product": {
+            const target = nd.products.find(p => norm(p.name) === norm(a.name));
+            if (!target) { results.push(`⚠️ Hapus produk: "${a.name}" tidak ditemukan.`); break; }
+            nd.products = nd.products.filter(p => p.id !== target.id);
+            results.push(`✓ Produk "${target.name}" dihapus.`); break;
+          }
+          case "remember": {
+            const fact = String(a.fact || a.content || "").trim();
+            if (!fact) { results.push("⚠️ Ingat: isi kosong."); break; }
+            if (!memFacts.some(f => norm(f) === norm(fact))) { memFacts.push(fact); memChanged = true; results.push(`🧠 Diingat: "${fact}"`); }
+            else results.push(`🧠 Sudah diingat: "${fact}"`);
+            break;
+          }
+          case "forget": {
+            const q = norm(a.fact || a.content || "");
+            const before = memFacts.length;
+            if (a.all) { memFacts = []; }
+            else if (q) { memFacts = memFacts.filter(f => !norm(f).includes(q)); }
+            if (memFacts.length !== before || a.all) { memChanged = true; results.push("🧠 Memori diperbarui (dilupakan)."); }
+            else results.push("🧠 Tidak ada yang cocok untuk dilupakan.");
+            break;
+          }
           default: results.push(`⚠️ Aksi tidak dikenal: ${a.type}`);
         }
       } catch (err) { results.push(`⚠️ Gagal memproses aksi: ${String(err.message || err)}`); }
     }
     setData(nd);
+    if (memChanged) setAiMem({ facts: memFacts });
     return results;
   };
 
@@ -2856,8 +2945,11 @@ Aturan aksi:
     setInput("");
     setLoadingId(targetId);
     try {
+      const memBlock = (aiMem.facts && aiMem.facts.length)
+        ? "\n\nINGATAN & PREFERENSI PEMILIK (hasil pembelajaran sebelumnya — WAJIB dipatuhi):\n- " + aiMem.facts.join("\n- ")
+        : "";
       const reply = await askAI({
-        system: SYSTEM + "\n\nDATA (JSON):\n" + buildContext(),
+        system: SYSTEM + memBlock + "\n\nDATA (JSON):\n" + buildContext(),
         messages: newMsgs.slice(-12).map(m => ({ role: m.role, content: m.content })),
       });
       const parsed = extractActions(reply || "");
@@ -2932,6 +3024,24 @@ Aturan aksi:
                   <button onClick={() => deleteChat(s.id)} title="Hapus chat" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--red)", cursor: "pointer", fontSize: 13 }}>🗑</button>
                 </div>
               ))}
+            </div>
+            <div style={{ borderTop: "1.5px solid var(--line)", padding: 12, maxHeight: "34%", overflowY: "auto" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <p style={{ fontSize: 12.5, fontWeight: 800, color: "var(--muted)" }}>🧠 Memori AI ({(aiMem.facts || []).length})</p>
+                {(aiMem.facts || []).length > 0 && <button onClick={() => setAiMem({ facts: [] })} style={{ fontSize: 11.5, fontWeight: 700, color: "var(--red)", background: "none", border: "none", cursor: "pointer" }}>Lupakan semua</button>}
+              </div>
+              {(aiMem.facts || []).length === 0 ? (
+                <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, lineHeight: 1.5 }}>AI menyimpan preferensi & koreksimu di sini agar makin sesuai. Contoh: ajari "k berarti ribuan" atau "produk default Kriuk".</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {aiMem.facts.map((f, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 9, padding: "7px 10px" }}>
+                      <span style={{ flex: 1, fontSize: 12.5, color: "var(--ink)", fontWeight: 500, lineHeight: 1.4 }}>{f}</span>
+                      <button onClick={() => setAiMem({ facts: aiMem.facts.filter((_, j) => j !== i) })} title="Lupakan" style={{ flexShrink: 0, background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 12 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </>
