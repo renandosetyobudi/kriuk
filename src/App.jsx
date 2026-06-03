@@ -1556,7 +1556,7 @@ function StoreDetail({ store, data, setData, onBack }) {
     });
     const notaNo = genNotaNo("drop", receiptCounter || 1);
     const newReceipt = { id: uid(), notaNo, type: "drop", date: dropDate, storeId: store.id, storeName: store.name, storeAddress: store.address, storeContact: store.contact, items: receiptItems, total };
-    setData(d => ({ ...d, consignments: newConsignments, receipts: [newReceipt, ...(d.receipts||[])], receiptCounter: (d.receiptCounter||1) + 1 }));
+    setData(d => ({ ...d, stores: d.stores.map(s => s.id === store.id ? { ...s, lastVisit: today } : s), consignments: newConsignments, receipts: [newReceipt, ...(d.receipts||[])], receiptCounter: (d.receiptCounter||1) + 1 }));
     setPreview(newReceipt);
     setDropItems([{ productId:"", quantity:"" }]);
     setDropDate(today);
@@ -1583,7 +1583,7 @@ function StoreDetail({ store, data, setData, onBack }) {
     });
     const notaNo = genNotaNo("cash", receiptCounter || 1);
     const newReceipt = { id: uid(), notaNo, type: "cash", date: cashDate, storeId: store.id, storeName: store.name, storeAddress: store.address, storeContact: store.contact, items: receiptItems, total };
-    setData(d => ({ ...d, transactions: [...newTxs, ...d.transactions], receipts: [newReceipt, ...(d.receipts||[])], receiptCounter: (d.receiptCounter||1) + 1 }));
+    setData(d => ({ ...d, stores: d.stores.map(s => s.id === store.id ? { ...s, lastVisit: today } : s), transactions: [...newTxs, ...d.transactions], receipts: [newReceipt, ...(d.receipts||[])], receiptCounter: (d.receiptCounter||1) + 1 }));
     setPreview(newReceipt);
     setCashItems([{ productId:"", quantity:"" }]);
     setCashDate(today);
@@ -1622,10 +1622,10 @@ function StoreDetail({ store, data, setData, onBack }) {
     if (itemsForReceipt.length > 0) {
       const notaNo = genNotaNo("pay", receiptCounter||1);
       const newReceipt = { id: uid(), notaNo, type: "payment", date: today, storeId: store.id, storeName: store.name, storeAddress: store.address, storeContact: store.contact, items: itemsForReceipt, total };
-      setData(d => ({ ...d, transactions: [...newTxs, ...d.transactions], consignments: newC, receipts: [newReceipt, ...(d.receipts||[])], receiptCounter: (d.receiptCounter||1) + 1 }));
+      setData(d => ({ ...d, stores: d.stores.map(s => s.id === store.id ? { ...s, lastVisit: today } : s), transactions: [...newTxs, ...d.transactions], consignments: newC, receipts: [newReceipt, ...(d.receipts||[])], receiptCounter: (d.receiptCounter||1) + 1 }));
       setPreview(newReceipt);
     } else {
-      setData(d => ({...d, transactions:[...newTxs,...d.transactions], consignments:newC}));
+      setData(d => ({...d, stores: d.stores.map(s => s.id === store.id ? { ...s, lastVisit: today } : s), transactions:[...newTxs,...d.transactions], consignments:newC}));
     }
     setShowVisit(false);
   };
@@ -1983,7 +1983,7 @@ function StoreDetail({ store, data, setData, onBack }) {
 }
 
 // Swipeable card with swipe-left-to-delete on touch devices
-function SwipeableStoreCard({ store, route, sc, products, totalRem, totalOwed, stockValue = 0, dist = null, userLoc = null, onTap, onDelete }) {
+function SwipeableStoreCard({ store, route, sc, products, totalRem, totalOwed, stockValue = 0, dist = null, userLoc = null, onTap, onDelete, onQuickVisit, visitedToday = false }) {
   const [offsetX, setOffsetX] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const touchStartX = useRef(null);
@@ -2040,6 +2040,7 @@ function SwipeableStoreCard({ store, route, sc, products, totalRem, totalOwed, s
           <span style={{ color:"var(--brand)", fontSize:20, opacity:0.6 }}>→</span>
         </div>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom: sc.length > 0 ? 12 : 0 }}>
+          {visitedToday && <Tag color="var(--green)" solid>✓ Dikunjungi</Tag>}
           {dist != null && <Tag color="var(--blue)" solid>📍 {fmtDist(dist)}</Tag>}
           {route && <Tag color={route.color}>{route.name}</Tag>}
           {totalRem > 0 && <Tag color="var(--brand)">{totalRem} bks</Tag>}
@@ -2052,6 +2053,114 @@ function SwipeableStoreCard({ store, route, sc, products, totalRem, totalOwed, s
             <span className="tnum" style={{ fontSize:12.5, fontWeight:800, color:"var(--brand-deep)" }}>📦 {fmt(stockValue)}</span>
           </div>
         )}
+        {onQuickVisit && (
+          <button onClick={(e) => { e.stopPropagation(); onQuickVisit(); }}
+            style={{ marginTop: 12, width: "100%", padding: "10px", borderRadius: 11, border: `1.5px solid ${visitedToday ? "var(--green)" : "var(--brand)"}`, background: visitedToday ? "var(--green-soft)" : "var(--brand-soft)", color: visitedToday ? "var(--green)" : "var(--brand-deep)", fontWeight: 800, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            {visitedToday ? "🔁 Kunjungi Lagi" : "🏍️ Kunjungi & Catat"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// QUICK VISIT BOTTOM SHEET (pintasan kunjungi & catat)
+// ─────────────────────────────────────────────
+function QuickVisitSheet({ store, data, setData, onClose }) {
+  const { consignments, products, receiptCounter } = data;
+  const sc = consignments.filter(c => c.storeId === store.id && c.status === "active" && c.remaining > 0);
+  const prodOf = (id) => products.find(p => p.id === id);
+  const [items, setItems] = useState(sc.map(c => ({ id: c.id, productId: c.productId, remaining: c.remaining, sold: "" })));
+  useEffect(() => { const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev; }; }, []);
+
+  const setSold = (id, val) => setItems(arr => arr.map(x => x.id === id ? { ...x, sold: val } : x));
+  const total = items.reduce((s, it) => { const p = prodOf(it.productId); const q = Math.max(0, Math.min(+it.sold || 0, it.remaining)); return s + (p ? q * p.price : 0); }, 0);
+  const markVisited = (d) => ({ ...d, stores: d.stores.map(s => s.id === store.id ? { ...s, lastVisit: today } : s) });
+  const justVisited = () => { setData(markVisited); onClose(); };
+
+  const save = () => {
+    const newTxs = [];
+    const receiptItems = [];
+    let tot = 0;
+    const newC = consignments.map(c => {
+      const it = items.find(x => x.id === c.id);
+      if (!it) return c;
+      const q = Math.max(0, Math.min(+it.sold || 0, c.remaining));
+      const prod = prodOf(c.productId);
+      if (q > 0 && prod) {
+        newTxs.push({ id: uid(), type: "income", category: "Penjualan", amount: q * prod.price, date: today, note: `${store.name} - ${prod.name} ${q}bks` });
+        receiptItems.push({ productId: c.productId, name: prod.name, qty: q, price: prod.price });
+        tot += q * prod.price;
+      }
+      const newRem = c.remaining - q;
+      return { ...c, deposited: newRem, remaining: newRem, status: newRem <= 0 ? "closed" : "active" };
+    });
+    if (receiptItems.length > 0) {
+      const notaNo = genNotaNo("pay", receiptCounter || 1);
+      const newReceipt = { id: uid(), notaNo, type: "payment", date: today, storeId: store.id, storeName: store.name, storeAddress: store.address, storeContact: store.contact, items: receiptItems, total: tot };
+      setData(d => ({ ...markVisited(d), transactions: [...newTxs, ...d.transactions], consignments: newC, receipts: [newReceipt, ...(d.receipts || [])], receiptCounter: (d.receiptCounter || 1) + 1 }));
+    } else {
+      setData(d => ({ ...markVisited(d), transactions: [...newTxs, ...d.transactions], consignments: newC }));
+    }
+    onClose();
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(33,26,18,0.42)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ animation: "sheetUp 0.3s cubic-bezier(.22,1,.36,1) both", background: "var(--surface)", borderTopLeftRadius: 26, borderTopRightRadius: 26, width: "100%", maxWidth: 560, maxHeight: "88vh", overflowY: "auto", padding: "12px 18px calc(20px + env(safe-area-inset-bottom))", boxShadow: "var(--shadow-lg)" }}>
+        <div style={{ width: 40, height: 4, borderRadius: 99, background: "var(--line-strong)", margin: "0 auto 16px" }} />
+        <p style={{ fontSize: 18, fontWeight: 800 }}>🏍️ Kunjungi: {store.name}</p>
+        <p style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500, marginBottom: store.note ? 10 : 14 }}>Catat berapa yang laku, lalu tandai sudah dikunjungi.</p>
+        {store.note && <div style={{ background: "var(--amber-soft)", border: "1.5px solid var(--line)", borderRadius: 10, padding: "9px 12px", marginBottom: 14, fontSize: 13, fontWeight: 600, color: "var(--ink-2)", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>📝 {store.note}</div>}
+
+        {sc.length === 0 ? (
+          <div style={{ background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "18px 14px", textAlign: "center", marginBottom: 16 }}>
+            <p style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 600 }}>Tidak ada titipan aktif di toko ini.</p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+            {items.map(it => {
+              const p = prodOf(it.productId);
+              const q = Math.max(0, Math.min(+it.sold || 0, it.remaining));
+              return (
+                <div key={it.id} style={{ background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 14.5, fontWeight: 700 }}>{p?.name || "Produk"}</p>
+                      <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>Titip {it.remaining} bks · {fmt(p?.price || 0)}/bks</p>
+                    </div>
+                    <span className="tnum" style={{ fontSize: 14, fontWeight: 800, color: "var(--green)", whiteSpace: "nowrap" }}>{q > 0 ? fmt(q * (p?.price || 0)) : "—"}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 700 }}>Terjual:</span>
+                    <input type="number" inputMode="numeric" min="0" max={it.remaining} placeholder="0" value={it.sold} onChange={e => setSold(it.id, e.target.value)} style={{ flex: 1 }} />
+                    <button onClick={() => setSold(it.id, String(it.remaining))} style={{ flexShrink: 0, padding: "8px 12px", borderRadius: 9, border: "1.5px solid var(--line-strong)", background: "var(--surface)", color: "var(--ink-2)", fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--font)", whiteSpace: "nowrap" }}>Semua</button>
+                  </div>
+                  {q > 0 && <p style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500, marginTop: 6 }}>Sisa jadi {it.remaining - q} bks</p>}
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 4px 0" }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--muted)" }}>Total tagihan</span>
+              <span className="tnum" style={{ fontSize: 18, fontWeight: 800, color: "var(--green)" }}>{fmt(total)}</span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          {sc.length === 0 ? (
+            <>
+              <Btn full variant="ghost" onClick={onClose}>Batal</Btn>
+              <Btn full variant="success" icon="✓" onClick={justVisited}>Tandai Dikunjungi</Btn>
+            </>
+          ) : (
+            <>
+              <Btn full variant="ghost" onClick={justVisited}>Dikunjungi saja</Btn>
+              <Btn full variant="success" icon="✓" onClick={save}>Catat & Selesai</Btn>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2073,6 +2182,8 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
   const [editingRouteId, setEditingRouteId] = useState(null);
   const [sf, setSf] = useState({ name:"",address:"",contact:"",routeId:"" });
   const [rf, setRf] = useState({ name:"",color:"#E07B1A",days:[] });
+  const [visitFilter, setVisitFilter] = useState("all"); // all | pending | done (hari ini)
+  const [quickVisitStore, setQuickVisitStore] = useState(null);
   const { confirm, Dialog } = useConfirm();
 
   if (selectedStoreId) {
@@ -2121,10 +2232,14 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
     return { store: s, route, sc, stockValue, totalOwed, totalRem, dist, order, idx };
   });
 
+  const isVisitedToday = (s) => s.lastVisit === today;
   const q = query.trim().toLowerCase();
-  let shown = storesWithMeta
+  const scoped = storesWithMeta
     .filter(m => !selRoute || m.store.routeId === selRoute)
     .filter(m => !q || m.store.name.toLowerCase().includes(q) || (m.store.address||"").toLowerCase().includes(q));
+  const doneCount = scoped.filter(m => isVisitedToday(m.store)).length;
+  const pendingCount = scoped.length - doneCount;
+  let shown = scoped.filter(m => visitFilter === "all" || (visitFilter === "done" ? isVisitedToday(m.store) : !isVisitedToday(m.store)));
   if (sortBy === "newest") shown = [...shown].sort((a,b) => (b.order - a.order) || (b.idx - a.idx));
   else if (sortBy === "oldest") shown = [...shown].sort((a,b) => (a.order - b.order) || (a.idx - b.idx));
   else if (sortBy === "value-desc") shown = [...shown].sort((a,b) => b.stockValue - a.stockValue);
@@ -2191,6 +2306,20 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
         </select>
       </div>
 
+      <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
+        <span style={{ fontSize:12, color:"var(--muted)", fontWeight:800, textTransform:"uppercase", letterSpacing:"0.04em" }}>Kunjungan hari ini:</span>
+        {[{id:"all",label:`Semua (${scoped.length})`},{id:"pending",label:`🕒 Belum (${pendingCount})`},{id:"done",label:`✓ Sudah (${doneCount})`}].map(f => {
+          const active = visitFilter === f.id;
+          const col = f.id === "done" ? "var(--green)" : f.id === "pending" ? "var(--brand)" : "var(--ink)";
+          return (
+            <button key={f.id} onClick={() => setVisitFilter(f.id)}
+              style={{ padding:"8px 14px", borderRadius:99, border:`1.5px solid ${active?col:"var(--line-strong)"}`, background: active?col:"var(--surface)", color: active?"#fff":"var(--ink-2)", fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:"var(--font)", whiteSpace:"nowrap" }}>
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+
       {sortBy === "nearest" && (
         <div style={{ marginBottom:14, borderRadius:12, padding:"11px 14px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap",
           background: locStatus==="ok" ? "var(--green-soft)" : locStatus==="denied"||locStatus==="unavailable" ? "var(--red-soft)" : "var(--brand-soft)",
@@ -2222,9 +2351,9 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:14 }}>
         {shown.map(({ store: s, route, sc, stockValue, totalOwed, totalRem, dist }) => (
             <SwipeableStoreCard key={s.id} store={s} route={route} sc={sc} products={products} totalRem={totalRem} totalOwed={totalOwed} stockValue={stockValue} dist={dist} userLoc={userLoc}
-              onTap={() => setSelectedStoreId(s.id)} onDelete={() => askDelStore(s)} />
+              onTap={() => setSelectedStoreId(s.id)} onDelete={() => askDelStore(s)} onQuickVisit={() => setQuickVisitStore(s)} visitedToday={isVisitedToday(s)} />
         ))}
-        {shown.length === 0 && <Card style={{gridColumn:"1/-1"}}><EmptyState icon="🔍" title={q || sortBy === "has-stock" ? "Tidak ada toko yang cocok" : "Belum ada toko"} sub={q ? `Tidak ada toko dengan nama/alamat "${query}"` : sortBy === "has-stock" ? "Tidak ada toko yang punya stok saat ini" : "Tambah toko baru ke rute ini"} /></Card>}
+        {shown.length === 0 && <Card style={{gridColumn:"1/-1"}}><EmptyState icon={visitFilter==="done"?"✓":visitFilter==="pending"?"🕒":"🔍"} title={visitFilter==="done" ? "Belum ada toko yang dikunjungi" : visitFilter==="pending" ? "Semua toko sudah dikunjungi 🎉" : (q || sortBy === "has-stock") ? "Tidak ada toko yang cocok" : "Belum ada toko"} sub={visitFilter==="done" ? "Toko yang sudah dikunjungi hari ini akan muncul di sini" : visitFilter==="pending" ? "Mantap! Semua toko di daftar ini sudah dikunjungi hari ini" : q ? `Tidak ada toko dengan nama/alamat "${query}"` : sortBy === "has-stock" ? "Tidak ada toko yang punya stok saat ini" : "Tambah toko baru ke rute ini"} /></Card>}
       </div>
 
       <Modal show={showAddStore} onClose={() => setShowAddStore(false)} title="Tambah Toko Baru">
@@ -2290,6 +2419,8 @@ function Stores({ data, setData, setPage, selectedStoreId, setSelectedStoreId })
           <Btn full onClick={saveRoute}>{editingRouteId ? "Simpan Perubahan" : "Simpan Rute"}</Btn>
         </div>
       </Modal>
+
+      {quickVisitStore && <QuickVisitSheet store={quickVisitStore} data={data} setData={setData} onClose={() => setQuickVisitStore(null)} />}
 
       <Dialog />
     </div>
