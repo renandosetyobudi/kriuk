@@ -8,39 +8,42 @@ import {
 // THEME — "Golden Kriuk": warm, appetizing, professional
 // ─────────────────────────────────────────────
 const CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #FAF7F1;
-    --bg-2: #F3EEE4;
-    --surface: #FFFFFF;
-    --line: #EBE4D7;
-    --line-strong: #DDD3C2;
-    --ink: #211A12;
-    --ink-2: #5A5043;
-    --muted: #948A79;
-    --brand: #E07B1A;
-    --brand-deep: #B85F0E;
-    --brand-soft: #FDF0DF;
-    --brand-tint: #FBE6CC;
-    --green: #138A5E;
-    --green-soft: #E4F4EC;
-    --red: #D6453F;
-    --red-soft: #FBE9E7;
-    --amber: #D89215;
-    --amber-soft: #FBF1DA;
-    --blue: #2563C9;
-    --blue-soft: #E7EEFB;
-    --violet: #7C4DD6;
-    --font: 'Plus Jakarta Sans', sans-serif;
-    --shadow-xs: 0 1px 2px rgba(58,40,18,0.04);
-    --shadow-sm: 0 2px 6px rgba(58,40,18,0.05), 0 1px 2px rgba(58,40,18,0.04);
-    --shadow: 0 8px 24px rgba(58,40,18,0.07), 0 2px 6px rgba(58,40,18,0.04);
-    --shadow-lg: 0 24px 60px rgba(40,28,12,0.16), 0 8px 24px rgba(40,28,12,0.08);
-    --r-lg: 20px;
-    --r: 16px;
-    --r-sm: 11px;
-    --r-xs: 8px;
+    /* Material 3 — modern dashboard, cool-neutral + indigo primary */
+    --bg: #F5F6F8;            /* surface / canvas */
+    --bg-2: #ECEEF2;          /* surface-container */
+    --surface: #FFFFFF;       /* surface-bright (cards) */
+    --line: #E6E8EC;          /* outline-variant (subtle) */
+    --line-strong: #D4D8DF;   /* outline */
+    --ink: #1A1C20;           /* on-surface (near-black, cool) */
+    --ink-2: #444851;         /* on-surface-variant */
+    --muted: #767C87;         /* on-surface-variant (dim) */
+    --brand: #4C5BD4;         /* primary (indigo) */
+    --brand-deep: #3A47AE;    /* primary pressed / on-primary-container */
+    --brand-soft: #E7E9FB;    /* primary-container */
+    --brand-tint: #CFD4F5;    /* primary-container outline */
+    --green: #1F9254;
+    --green-soft: #E2F3E9;
+    --red: #D93D38;
+    --red-soft: #FBE6E4;
+    --amber: #BC850F;
+    --amber-soft: #F6ECD2;
+    --blue: #2680D8;
+    --blue-soft: #E1EFFB;
+    --violet: #6E59D9;
+    --font: 'Inter', sans-serif;
+    /* M3 tonal elevation — soft, cool-toned */
+    --shadow-xs: 0 1px 2px rgba(20,22,30,0.05);
+    --shadow-sm: 0 1px 3px rgba(20,22,30,0.07);
+    --shadow: 0 4px 14px rgba(20,22,30,0.08);
+    --shadow-lg: 0 12px 36px rgba(16,18,26,0.18);
+    /* M3 shape scale */
+    --r-lg: 28px;
+    --r: 20px;
+    --r-sm: 14px;
+    --r-xs: 10px;
   }
   body { background: var(--bg); color: var(--ink); font-family: var(--font); min-height: 100vh; font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
   html { overflow-x: hidden; }
@@ -48,18 +51,18 @@ const CSS = `
   .tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
   input, select, textarea {
     background: var(--surface); border: 1.5px solid var(--line-strong); color: var(--ink);
-    border-radius: var(--r-sm); padding: 12px 14px; font-family: var(--font);
+    border-radius: var(--r-sm); padding: 13px 15px; font-family: var(--font);
     font-size: 15px; font-weight: 500; outline: none; width: 100%;
     transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
   }
-  input::placeholder, textarea::placeholder { color: #B8AE9C; font-weight: 400; }
+  input::placeholder, textarea::placeholder { color: #A4AAB4; font-weight: 400; }
   input:focus, select:focus, textarea:focus {
-    border-color: var(--brand); box-shadow: 0 0 0 4px rgba(224,123,26,0.13);
+    border-color: var(--brand); box-shadow: 0 0 0 3px rgba(76,91,212,0.18);
   }
   button { cursor: pointer; font-family: var(--font); }
   ::-webkit-scrollbar { width: 7px; height: 7px; }
-  ::-webkit-scrollbar-thumb { background: #D8CDBA; border-radius: 99px; }
-  ::-webkit-scrollbar-thumb:hover { background: #C5B89F; }
+  ::-webkit-scrollbar-thumb { background: #CDD2DA; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #B7BEC9; }
   @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
   @keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
   @keyframes sheetUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
@@ -72,6 +75,32 @@ const CSS = `
   .stagger > *:nth-child(3){animation-delay:.10s} .stagger > *:nth-child(4){animation-delay:.14s}
   .stagger > *:nth-child(5){animation-delay:.18s} .stagger > *:nth-child(6){animation-delay:.22s}
 `;
+
+// ─────────────────────────────────────────────
+// ICON SYSTEM — crisp line icons (Lucide-style), inherit currentColor
+// ─────────────────────────────────────────────
+const ICONS = {
+  home: <><path d="M3 9.6 12 3l9 6.6"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9.5 21v-6h5v6"/></>,
+  store: <><path d="M3.4 8 5 3.6h14L20.6 8"/><path d="M4.6 8.5V20a1 1 0 0 0 1 1h12.8a1 1 0 0 0 1-1V8.5"/><path d="M9 21v-5h6v5"/><path d="M3.4 8h17.2"/></>,
+  wallet: <><path d="M3 7a2 2 0 0 1 2-2h13v3"/><path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3"/><path d="M21 11v4h-4a2 2 0 0 1 0-4Z"/></>,
+  receipt: <><path d="M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17l-2.5-1.4L14 21l-2-1.4L10 21l-2.5-1.4Z"/><path d="M9 8h6"/><path d="M9 12h6"/></>,
+  note: <><path d="M5 4a1 1 0 0 1 1-1h9l4 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1Z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></>,
+  package: <><path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/><path d="m7.5 5.5 9 5"/></>,
+  sparkles: <><path d="M12 3l1.7 4.6L18 9l-4.3 1.4L12 15l-1.7-4.6L6 9l4.3-1.4Z"/><path d="M18.5 14l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8Z"/></>,
+  settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3 1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></>,
+  bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>,
+  menu: <><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></>,
+  user: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="8" r="4"/></>,
+};
+function Icon({ name, size = 20, stroke = 2, style }) {
+  const paths = ICONS[name];
+  if (!paths) return null;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0, ...style }}>
+      {paths}
+    </svg>
+  );
+}
 
 // ─────────────────────────────────────────────
 // COMPANY INFO
@@ -415,10 +444,9 @@ function Card({ children, style, onClick, hoverable }) {
       style={{
         background: "var(--surface)", borderRadius: "var(--r)",
         border: `1.5px solid ${hov && interactive ? "var(--brand-tint)" : "var(--line)"}`,
-        boxShadow: hov && interactive ? "var(--shadow)" : "var(--shadow-sm)",
+        boxShadow: hov && interactive ? "var(--shadow-sm)" : "var(--shadow-xs)",
         padding: 20, transition: "all 0.2s cubic-bezier(.22,1,.36,1)",
         cursor: onClick ? "pointer" : "default",
-        transform: hov && interactive ? "translateY(-2px)" : "none",
         ...style,
       }}>{children}</div>
   );
@@ -427,20 +455,20 @@ function Card({ children, style, onClick, hoverable }) {
 function Btn({ children, onClick, variant = "primary", size = "md", icon, full, disabled }) {
   const [hov, setHov] = useState(false);
   const v = {
-    primary: { bg: hov ? "var(--brand-deep)" : "var(--brand)", color: "#fff", border: "transparent", shadow: hov ? "0 6px 18px rgba(224,123,26,0.32)" : "0 2px 8px rgba(224,123,26,0.22)" },
-    outline: { bg: hov ? "var(--brand-soft)" : "var(--surface)", color: "var(--brand-deep)", border: "var(--brand-tint)", shadow: "none" },
-    ghost: { bg: hov ? "var(--bg-2)" : "var(--surface)", color: "var(--ink-2)", border: "var(--line-strong)", shadow: "none" },
+    primary: { bg: hov ? "var(--brand-deep)" : "var(--brand)", color: "#fff", border: "transparent", shadow: hov ? "var(--shadow)" : "var(--shadow-xs)" },
+    outline: { bg: hov ? "var(--brand-soft)" : "transparent", color: "var(--brand-deep)", border: "var(--line-strong)", shadow: "none" },
+    ghost: { bg: hov ? "var(--line)" : "var(--bg-2)", color: "var(--ink-2)", border: "transparent", shadow: "none" },
     dark: { bg: hov ? "#000" : "var(--ink)", color: "#fff", border: "transparent", shadow: "none" },
-    danger: { bg: hov ? "#F7DAD7" : "var(--red-soft)", color: "var(--red)", border: "#F2C7C3", shadow: "none" },
-    success: { bg: hov ? "#0F7A52" : "var(--green)", color: "#fff", border: "transparent", shadow: hov ? "0 6px 18px rgba(19,138,94,0.30)" : "0 2px 8px rgba(19,138,94,0.22)" },
+    danger: { bg: hov ? "#F1CBC6" : "var(--red-soft)", color: "var(--red)", border: "transparent", shadow: "none" },
+    success: { bg: hov ? "#157A52" : "var(--green)", color: "#fff", border: "transparent", shadow: hov ? "var(--shadow)" : "var(--shadow-xs)" },
   }[variant] || {};
-  const pad = size === "sm" ? "8px 13px" : size === "lg" ? "13px 20px" : "11px 18px";
+  const pad = size === "sm" ? "9px 16px" : size === "lg" ? "14px 24px" : "11px 20px";
   const fs = size === "sm" ? 13 : size === "lg" ? 15 : 14;
   return (
     <button onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       onClick={onClick} disabled={disabled}
       style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: pad, fontSize: fs, fontWeight: 700,
-        borderRadius: "var(--r-sm)", border: `1.5px solid ${v.border}`, background: v.bg, color: v.color,
+        borderRadius: 999, border: `1.5px solid ${v.border}`, background: v.bg, color: v.color,
         transition: "all 0.16s", width: full ? "100%" : undefined, boxShadow: v.shadow,
         justifyContent: full ? "center" : undefined, opacity: disabled ? 0.5 : 1, letterSpacing: "-0.01em" }}>
       {icon && <span style={{ fontSize: fs + 2 }}>{icon}</span>}
@@ -467,7 +495,7 @@ function Modal({ show, onClose, title, subtitle, children, wide }) {
       paddingLeft: 14, paddingRight: 14,
     }}>
       <div onClick={e => e.stopPropagation()} style={{ animation: "sheetUp 0.3s cubic-bezier(.22,1,.36,1) both",
-          background: "var(--surface)", borderRadius: 22, padding: 22,
+          background: "var(--surface)", borderRadius: "var(--r-lg)", padding: 24,
           width: "100%", maxWidth: wide ? 660 : 480,
           boxShadow: "var(--shadow-lg)", margin: "0 auto",
         }}>
@@ -477,7 +505,7 @@ function Modal({ show, onClose, title, subtitle, children, wide }) {
             <h3 style={{ fontSize: 19, fontWeight: 800, color: "var(--ink)" }}>{title}</h3>
             {subtitle && <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 2, fontWeight: 500 }}>{subtitle}</p>}
           </div>
-          <button onClick={onClose} style={{ width: 38, height: 38, borderRadius: 11, border: "1.5px solid var(--line)", background: "var(--bg-2)", color: "var(--muted)", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .15s" }}
+          <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: 999, border: "none", background: "var(--bg-2)", color: "var(--muted)", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .15s" }}
               onMouseEnter={e => { e.currentTarget.style.background = "var(--red-soft)"; e.currentTarget.style.color = "var(--red)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "var(--bg-2)"; e.currentTarget.style.color = "var(--muted)"; }}>✕</button>
         </div>
@@ -544,11 +572,11 @@ function StatCard({ label, value, sub, icon, color = "var(--brand)", soft, onCli
   return (
     <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ background: "var(--surface)", borderRadius: "var(--r)", border: `1.5px solid ${hov && onClick ? color + "55" : "var(--line)"}`,
-        boxShadow: hov && onClick ? "var(--shadow)" : "var(--shadow-sm)", padding: 18,
+        boxShadow: hov && onClick ? "var(--shadow-sm)" : "var(--shadow-xs)", padding: 18,
         cursor: onClick ? "pointer" : "default", transition: "all .2s cubic-bezier(.22,1,.36,1)",
-        transform: hov && onClick ? "translateY(-3px)" : "none", position: "relative", overflow: "hidden" }}>
+        position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -20, right: -20, width: 80, height: 80, borderRadius: "50%", background: color, opacity: 0.05 }} />
-      <div style={{ width: 42, height: 42, borderRadius: 12, background: soft || color + "16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, marginBottom: 12 }}>{icon}</div>
+      <div style={{ width: 44, height: 44, borderRadius: 14, background: soft || color + "16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, marginBottom: 12 }}>{icon}</div>
       <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 4, fontWeight: 600 }}>{label}</p>
       <p className="tnum" style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)", lineHeight: 1.15, letterSpacing: "-0.02em" }}>{value}</p>
       {sub && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, fontWeight: 500 }}>{sub}</p>}
@@ -570,14 +598,17 @@ function SectionHeader({ title, sub, action }) {
 
 function Tabs({ items, active, onChange }) {
   return (
-    <div style={{ display: "flex", gap: 3, background: "var(--surface)", borderRadius: 13, padding: 4, border: "1.5px solid var(--line)", flexWrap: "wrap", boxShadow: "var(--shadow-xs)" }}>
-      {items.map(t => (
-        <button key={t.id} onClick={() => onChange(t.id)}
-          style={{ padding: "9px 18px", borderRadius: 9, border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all 0.18s", fontFamily: "var(--font)",
-            background: active === t.id ? "var(--ink)" : "transparent", color: active === t.id ? "#fff" : "var(--ink-2)", letterSpacing: "-0.01em" }}>
-          {t.icon && <span style={{ marginRight: 5 }}>{t.icon}</span>}{t.label}
-        </button>
-      ))}
+    <div style={{ display: "flex", gap: 4, background: "var(--bg-2)", borderRadius: 999, padding: 4, flexWrap: "wrap" }}>
+      {items.map(t => {
+        const on = active === t.id;
+        return (
+          <button key={t.id} onClick={() => onChange(t.id)}
+            style={{ padding: "9px 18px", borderRadius: 999, border: "none", fontSize: 14, fontWeight: on ? 800 : 600, cursor: "pointer", transition: "all 0.18s", fontFamily: "var(--font)",
+              background: on ? "var(--surface)" : "transparent", color: on ? "var(--ink)" : "var(--muted)", boxShadow: on ? "var(--shadow-xs)" : "none", letterSpacing: "-0.01em" }}>
+            {t.icon && <span style={{ marginRight: 5 }}>{t.icon}</span>}{t.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -650,14 +681,14 @@ function LocationPicker({ lat, lng, address, onChange }) {
 // NAV CONFIG
 // ─────────────────────────────────────────────
 const NAV = [
-  { id: "dashboard", label: "Beranda", icon: "🏠", desc: "Ringkasan bisnis" },
-  { id: "stores", label: "Toko", icon: "🏪", desc: "Drop, tagih, cetak nota" },
-  { id: "finance", label: "Keuangan", icon: "💰", desc: "Omset & pengeluaran" },
-  { id: "receipts", label: "Nota", icon: "🧾", desc: "Riwayat & cetak ulang" },
-  { id: "notes", label: "Catatan", icon: "📝", desc: "Memo & pengingat" },
-  { id: "products", label: "Produk", icon: "🍟", desc: "Kelola produk" },
-  { id: "assistant", label: "Asisten AI", icon: "🤖", desc: "Tanya-jawab data bisnis" },
-  { id: "settings", label: "Pengaturan", icon: "⚙️", desc: "Backup & restore data" },
+  { id: "dashboard", label: "Beranda", icon: "home", desc: "Ringkasan bisnis" },
+  { id: "stores", label: "Toko", icon: "store", desc: "Drop, tagih, cetak nota" },
+  { id: "finance", label: "Keuangan", icon: "wallet", desc: "Omset & pengeluaran" },
+  { id: "receipts", label: "Nota", icon: "receipt", desc: "Riwayat & cetak ulang" },
+  { id: "notes", label: "Catatan", icon: "note", desc: "Memo & pengingat" },
+  { id: "products", label: "Produk", icon: "package", desc: "Kelola produk" },
+  { id: "assistant", label: "Asisten AI", icon: "sparkles", desc: "Tanya-jawab data bisnis" },
+  { id: "settings", label: "Pengaturan", icon: "settings", desc: "Backup & restore data" },
 ];
 const BOTTOM_TABS = ["dashboard", "stores", "finance", "receipts"]; // + "more"
 
@@ -668,8 +699,8 @@ function NotificationBell({ reminders, onOpenStore }) {
   return (
     <div style={{ position: "relative", flexShrink: 0 }}>
       <button onClick={() => setOpen(o => !o)} aria-label="Notifikasi" title="Pengingat"
-        style={{ position: "relative", width: 42, height: 42, borderRadius: 12, border: "1.5px solid var(--line)", background: "var(--surface)", cursor: "pointer", fontSize: 19, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-xs)" }}>
-        🔔
+        style={{ position: "relative", width: 44, height: 44, borderRadius: 999, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-xs)" }}>
+        <Icon name="bell" size={19} />
         {count > 0 && <span style={{ position: "absolute", top: -5, right: -5, minWidth: 19, height: 19, padding: "0 5px", borderRadius: 99, background: "var(--red)", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid var(--surface)" }}>{count > 9 ? "9+" : count}</span>}
       </button>
       {open && (
@@ -712,18 +743,18 @@ function NotificationBell({ reminders, onOpenStore }) {
 // Desktop top nav
 function TopNav({ page, setPage }) {
   return (
-    <nav className="topnav" style={{ display: "flex", gap: 4, background: "var(--bg-2)", borderRadius: 13, padding: 4, border: "1.5px solid var(--line)" }}>
+    <nav className="topnav" style={{ display: "flex", gap: 4, background: "var(--bg-2)", borderRadius: 999, padding: 5 }}>
       {NAV.map(n => {
         const active = page === n.id;
         return (
           <button key={n.id} onClick={() => setPage(n.id)}
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 14px", borderRadius: 9, border: "none", cursor: "pointer",
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 15px", borderRadius: 999, border: "none", cursor: "pointer",
               background: active ? "var(--surface)" : "transparent", color: active ? "var(--brand-deep)" : "var(--ink-2)",
               fontWeight: active ? 800 : 600, fontSize: 14, transition: "all .16s", fontFamily: "var(--font)",
               boxShadow: active ? "var(--shadow-xs)" : "none", letterSpacing: "-0.01em" }}
             onMouseEnter={e => { if (!active) e.currentTarget.style.background = "var(--surface)"; }}
             onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}>
-            <span style={{ fontSize: 16 }}>{n.icon}</span>{n.label}
+            <Icon name={n.icon} size={17} />{n.label}
           </button>
         );
       })}
@@ -748,17 +779,19 @@ function BottomNav({ page, setPage, onMore }) {
           const active = page === n.id;
           return (
             <button key={n.id} onClick={() => setPage(n.id)}
-              style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "9px 4px 8px", border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font)", position: "relative" }}>
-              {active && <span style={{ position: "absolute", top: 0, width: 26, height: 3, borderRadius: 99, background: "var(--brand)" }} />}
-              <span style={{ fontSize: 21, filter: active ? "none" : "grayscale(0.5)", opacity: active ? 1 : 0.6, transition: "all .15s" }}>{n.icon}</span>
+              style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "8px 4px 8px", border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font)" }}>
+              <span style={{ width: 58, height: 30, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", background: active ? "var(--brand-soft)" : "transparent", color: active ? "var(--brand-deep)" : "var(--muted)", transition: "all .18s" }}>
+                <Icon name={n.icon} size={21} />
+              </span>
               <span style={{ fontSize: 11, fontWeight: active ? 800 : 600, color: active ? "var(--brand-deep)" : "var(--muted)" }}>{n.label}</span>
             </button>
           );
         })}
         <button onClick={onMore}
-          style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "9px 4px 8px", border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font)", position: "relative" }}>
-          {moreActive && <span style={{ position: "absolute", top: 0, width: 26, height: 3, borderRadius: 99, background: "var(--brand)" }} />}
-          <span style={{ fontSize: 21, opacity: moreActive ? 1 : 0.6 }}>☰</span>
+          style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "8px 4px 8px", border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font)" }}>
+          <span style={{ width: 58, height: 30, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", background: moreActive ? "var(--brand-soft)" : "transparent", color: moreActive ? "var(--brand-deep)" : "var(--muted)", transition: "all .18s" }}>
+            <Icon name="menu" size={21} />
+          </span>
           <span style={{ fontSize: 11, fontWeight: moreActive ? 800 : 600, color: moreActive ? "var(--brand-deep)" : "var(--muted)" }}>Lainnya</span>
         </button>
       </div>
@@ -788,7 +821,7 @@ function MoreSheet({ show, onClose, page, setPage }) {
               <button key={n.id} onClick={() => { setPage(n.id); onClose(); }}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px", borderRadius: 14, border: `1.5px solid ${active ? "var(--brand-tint)" : "var(--line)"}`,
                   background: active ? "var(--brand-soft)" : "var(--surface)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font)", transition: "all .15s" }}>
-                <div style={{ width: 40, height: 40, borderRadius: 11, background: active ? "var(--brand)" : "var(--bg-2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, flexShrink: 0 }}>{n.icon}</div>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: active ? "var(--brand)" : "var(--bg-2)", color: active ? "#fff" : "var(--ink-2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name={n.icon} size={20} /></div>
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontSize: 14, fontWeight: 800, color: active ? "var(--brand-deep)" : "var(--ink)" }}>{n.label}</p>
                   <p style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500 }}>{n.desc}</p>
@@ -839,7 +872,7 @@ function Dashboard({ data, setPage }) {
       </div>
 
       {todayRoutes.length > 0 && (
-        <div onClick={() => setPage("stores")} style={{ background: "linear-gradient(120deg, #E07B1A 0%, #C2611A 100%)", borderRadius: "var(--r)", padding: "18px 22px", marginBottom: 20, cursor: "pointer", display: "flex", alignItems: "center", gap: 16, boxShadow: "0 12px 30px rgba(224,123,26,0.28)", position: "relative", overflow: "hidden" }}>
+        <div onClick={() => setPage("stores")} style={{ background: "linear-gradient(120deg, var(--brand) 0%, var(--brand-deep) 100%)", borderRadius: "var(--r)", padding: "18px 22px", marginBottom: 20, cursor: "pointer", display: "flex", alignItems: "center", gap: 16, boxShadow: "0 12px 30px rgba(76,91,212,0.26)", position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", right: -30, top: -30, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.1)" }} />
           <div style={{ width: 50, height: 50, background: "rgba(255,255,255,0.22)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 25, flexShrink: 0 }}>🗺️</div>
           <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
@@ -867,9 +900,9 @@ function Dashboard({ data, setPage }) {
               <CartesianGrid strokeDasharray="3 4" stroke="#EFE8DB" vertical={false} />
               <XAxis dataKey="hari" tick={{ fill: "var(--muted)", fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: "var(--muted)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtShort} />
-              <Tooltip contentStyle={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 12, fontSize: 12, boxShadow: "var(--shadow)", fontFamily: "var(--font)" }} formatter={v => fmt(v)} cursor={{ fill: "rgba(224,123,26,0.06)" }} />
-              <Bar dataKey="Omset" fill="#E07B1A" radius={[6,6,0,0]} maxBarSize={26} />
-              <Bar dataKey="Biaya" fill="#D6453F" radius={[6,6,0,0]} maxBarSize={26} />
+              <Tooltip contentStyle={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 12, fontSize: 12, boxShadow: "var(--shadow)", fontFamily: "var(--font)" }} formatter={v => fmt(v)} cursor={{ fill: "rgba(76,91,212,0.06)" }} />
+              <Bar dataKey="Omset" fill="#4C5BD4" radius={[6,6,0,0]} maxBarSize={26} />
+              <Bar dataKey="Biaya" fill="#D93D38" radius={[6,6,0,0]} maxBarSize={26} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -1220,11 +1253,11 @@ function Finance({ data, setData }) {
                   <CartesianGrid strokeDasharray="3 4" stroke="#EFE8DB" vertical={false} />
                   <XAxis dataKey={xKey} tick={{fill:"var(--muted)",fontSize:12,fontWeight:600}} axisLine={false} tickLine={false} />
                   <YAxis tick={{fill:"var(--muted)",fontSize:11}} axisLine={false} tickLine={false} tickFormatter={fmtShort} />
-                  <Tooltip contentStyle={{background:"var(--surface)",border:"1.5px solid var(--line)",borderRadius:12,fontSize:12,boxShadow:"var(--shadow)",fontFamily:"var(--font)"}} formatter={v => fmt(v)} cursor={{ fill: "rgba(224,123,26,0.06)" }} />
+                  <Tooltip contentStyle={{background:"var(--surface)",border:"1.5px solid var(--line)",borderRadius:12,fontSize:12,boxShadow:"var(--shadow)",fontFamily:"var(--font)"}} formatter={v => fmt(v)} cursor={{ fill: "rgba(76,91,212,0.06)" }} />
                   <Legend wrapperStyle={{fontSize:13,color:"var(--muted)",paddingTop:8}} />
-                  <Bar dataKey="Omset" fill="#E07B1A" radius={[6,6,0,0]} maxBarSize={30} />
-                  <Bar dataKey="Biaya" fill="#D6453F" radius={[6,6,0,0]} maxBarSize={30} />
-                  {period === "bulanan" && <Bar dataKey="Laba" fill="#138A5E" radius={[6,6,0,0]} maxBarSize={30} />}
+                  <Bar dataKey="Omset" fill="#4C5BD4" radius={[6,6,0,0]} maxBarSize={30} />
+                  <Bar dataKey="Biaya" fill="#D93D38" radius={[6,6,0,0]} maxBarSize={30} />
+                  {period === "bulanan" && <Bar dataKey="Laba" fill="#1F9254" radius={[6,6,0,0]} maxBarSize={30} />}
                 </BarChart>
               </ResponsiveContainer>
             </Card>
@@ -1233,12 +1266,12 @@ function Finance({ data, setData }) {
                 <p style={{ fontWeight:800, fontSize:15, marginBottom:18 }}>Tren Laba Bersih</p>
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={chartData}>
-                    <defs><linearGradient id="labaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#138A5E" stopOpacity={0.22} /><stop offset="100%" stopColor="#138A5E" stopOpacity={0} /></linearGradient></defs>
+                    <defs><linearGradient id="labaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1F9254" stopOpacity={0.22} /><stop offset="100%" stopColor="#1F9254" stopOpacity={0} /></linearGradient></defs>
                     <CartesianGrid strokeDasharray="3 4" stroke="#EFE8DB" vertical={false} />
                     <XAxis dataKey="label" tick={{fill:"var(--muted)",fontSize:12}} axisLine={false} tickLine={false} />
                     <YAxis tick={{fill:"var(--muted)",fontSize:11}} axisLine={false} tickLine={false} tickFormatter={fmtShort} />
                     <Tooltip contentStyle={{background:"var(--surface)",border:"1.5px solid var(--line)",borderRadius:12,fontSize:12,boxShadow:"var(--shadow)",fontFamily:"var(--font)"}} formatter={v => fmt(v)} />
-                    <Area type="monotone" dataKey="Laba" stroke="#138A5E" strokeWidth={2.5} fill="url(#labaGrad)" dot={{fill:"#138A5E",r:4}} />
+                    <Area type="monotone" dataKey="Laba" stroke="#1F9254" strokeWidth={2.5} fill="url(#labaGrad)" dot={{fill:"#1F9254",r:4}} />
                   </AreaChart>
                 </ResponsiveContainer>
               </Card>
@@ -1335,7 +1368,7 @@ function Finance({ data, setData }) {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
-              <div style={{ background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", borderRadius: "var(--r)", padding: 18, color: "#fff", boxShadow: "0 10px 26px rgba(224,123,26,0.24)", gridColumn: "1 / -1" }}>
+              <div style={{ background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", borderRadius: "var(--r)", padding: 18, color: "#fff", boxShadow: "0 10px 26px rgba(76,91,212,0.22)", gridColumn: "1 / -1" }}>
                 <p style={{ fontSize: 13, fontWeight: 600, opacity: 0.92 }}>📦 Total Nilai Barang Titipan {titipanRoute ? `· ${routeOf(titipanRoute)?.name || ""}` : "· Semua Toko"}</p>
                 <p className="tnum" style={{ fontSize: 30, fontWeight: 800, marginTop: 4, lineHeight: 1.1 }}>{fmt(titipanValue)}</p>
                 <p className="tnum" style={{ fontSize: 13, fontWeight: 600, opacity: 0.92, marginTop: 6 }}>{titipanQty} bungkus · {titipanStoreCount} toko · {titipanByProduct.length} jenis produk</p>
@@ -1386,7 +1419,7 @@ function Finance({ data, setData }) {
               Perkiraan total kekayaan usaha: kas/bank, peralatan, ditambah <b>piutang</b> & <b>nilai barang titipan</b> yang dihitung otomatis dari data toko.
             </p>
 
-            <div style={{ background: "linear-gradient(135deg, #6E54C8, #4F39A8)", borderRadius: "var(--r)", padding: 20, color: "#fff", boxShadow: "0 10px 26px rgba(79,57,168,0.28)", marginBottom: 14 }}>
+            <div style={{ background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", borderRadius: "var(--r)", padding: 20, color: "#fff", boxShadow: "0 10px 26px rgba(76,91,212,0.22)", marginBottom: 14 }}>
               <p style={{ fontSize: 13, fontWeight: 600, opacity: 0.92 }}>💎 Total Aset</p>
               <p className="tnum" style={{ fontSize: 32, fontWeight: 800, marginTop: 4, lineHeight: 1.1 }}>{fmt(totalAset)}</p>
               <p style={{ fontSize: 12, opacity: 0.85, marginTop: 6, fontWeight: 500 }}>Manual {fmt(manualTotal)} · Piutang {fmt(piutangAset)} · Titipan {fmt(nilaiTitipanAll)}</p>
@@ -1923,7 +1956,7 @@ function StoreDetail({ store, data, setData, onBack }) {
             </div>
           );
         })}
-        <div style={{ background:"linear-gradient(120deg, var(--brand), var(--brand-deep))", borderRadius:14, padding:"16px 20px", marginBottom:16, color:"#fff", boxShadow:"0 8px 22px rgba(224,123,26,0.25)" }}>
+        <div style={{ background:"linear-gradient(120deg, var(--brand), var(--brand-deep))", borderRadius:14, padding:"16px 20px", marginBottom:16, color:"#fff", boxShadow:"0 8px 22px rgba(76,91,212,0.22)" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
             <p style={{ fontSize:13.5, opacity:0.92, fontWeight:600 }}>💰 Setoran Pemilik Toko</p>
             <p className="tnum" style={{ fontSize:26, fontWeight:800 }}>{fmt(totalTagihanVisit)}</p>
@@ -3472,7 +3505,7 @@ Aturan aksi:
         <div ref={scrollRef} style={{ minHeight: 300, maxHeight: "52vh", overflowY: "auto", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
           {messages.length === 0 && !loadingThis && (
             <div style={{ textAlign: "center", margin: "auto 0", padding: "10px 6px" }}>
-              <div style={{ width: 60, height: 60, borderRadius: 18, background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, margin: "0 auto 14px", boxShadow: "0 10px 24px rgba(224,123,26,0.28)" }}>🤖</div>
+              <div style={{ width: 60, height: 60, borderRadius: 18, background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", boxShadow: "0 10px 24px rgba(76,91,212,0.26)", color: "#fff" }}><Icon name="sparkles" size={30} /></div>
               <p style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Halo! Saya asisten bisnis Anda</p>
               <p style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 500, maxWidth: 360, margin: "0 auto 18px", lineHeight: 1.55 }}>Tanyakan tentang omset, titipan, toko, atau produk. Coba salah satu:</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 420, margin: "0 auto" }}>
@@ -3489,7 +3522,7 @@ Aturan aksi:
 
           {messages.map((m, i) => (
             <div key={i} style={{ display: "flex", gap: 9, flexDirection: m.role === "user" ? "row-reverse" : "row", alignItems: "flex-start" }}>
-              <div style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, background: m.role === "user" ? "var(--ink)" : "linear-gradient(135deg, var(--brand), var(--brand-deep))", color: "#fff" }}>{m.role === "user" ? "🧑" : "🤖"}</div>
+              <div style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, background: m.role === "user" ? "var(--ink)" : "linear-gradient(135deg, var(--brand), var(--brand-deep))", color: "#fff" }}><Icon name={m.role === "user" ? "user" : "sparkles"} size={17} /></div>
               <div style={{ maxWidth: "82%", padding: "11px 14px", borderRadius: 14, fontSize: 14, lineHeight: 1.6, fontWeight: 500, whiteSpace: "pre-wrap", wordBreak: "break-word",
                 background: m.role === "user" ? "var(--brand-soft)" : "var(--bg-2)", color: "var(--ink)", border: `1.5px solid ${m.role === "user" ? "var(--brand-tint)" : "var(--line)"}`,
                 borderTopRightRadius: m.role === "user" ? 4 : 14, borderTopLeftRadius: m.role === "user" ? 14 : 4 }}>
@@ -3500,7 +3533,7 @@ Aturan aksi:
 
           {loadingThis && (
             <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-              <div style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", color: "#fff" }}>🤖</div>
+              <div style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", color: "#fff" }}><Icon name="sparkles" size={17} /></div>
               <div style={{ padding: "12px 16px", borderRadius: 14, borderTopLeftRadius: 4, background: "var(--bg-2)", border: "1.5px solid var(--line)", color: "var(--muted)", fontSize: 13.5, fontWeight: 600 }}>
                 <span className="ai-typing">Sedang menganalisis data…</span>
               </div>
@@ -3515,7 +3548,7 @@ Aturan aksi:
 
           {pending && active && pending.sessionId === active.id && (
             <div style={{ background: "var(--brand-soft)", border: "2px solid var(--brand-tint)", borderRadius: 14, padding: 16 }}>
-              <p style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>🤖 Konfirmasi perubahan data ({pending.actions.length})</p>
+              <p style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10, display: "flex", alignItems: "center", gap: 7, color: "var(--brand-deep)" }}><Icon name="sparkles" size={16} /> Konfirmasi perubahan data ({pending.actions.length})</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14, maxHeight: 280, overflowY: "auto" }}>
                 {pending.actions.map((a, i) => (
                   <div key={i} style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 10, padding: "9px 12px", fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>
@@ -3539,7 +3572,7 @@ Aturan aksi:
       </Card>
 
       <p style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500, textAlign: "center", lineHeight: 1.6, marginTop: 14 }}>
-        🤖 AI bisa menjawab pertanyaan & mengelola data (tambah toko/produk, catat penjualan, dll). Perubahan selalu minta konfirmasi dulu — tetap cek angka penting.<br/>
+        AI bisa menjawab pertanyaan & mengelola data (tambah toko/produk, catat penjualan, dll). Perubahan selalu minta konfirmasi dulu — tetap cek angka penting.<br/>
         Demo ini memakai AI bawaan Claude. Untuk aplikasi yang Anda host sendiri, sambungkan ke API key + backend (lihat catatan di kode).
       </p>
 
@@ -3589,10 +3622,12 @@ export default function App() {
     <>
       <style>{CSS}</style>
       <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-        <header style={{ position: "sticky", top: 0, zIndex: 500, background: "rgba(250,247,241,0.85)", backdropFilter: "blur(14px)", borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
+        <header style={{ position: "sticky", top: 0, zIndex: 500, background: "rgba(245,246,248,0.82)", backdropFilter: "blur(16px)", borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
           <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0, flexShrink: 0 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 12, background: "linear-gradient(135deg, #E07B1A, #C2611A)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, boxShadow: "0 6px 16px rgba(224,123,26,0.32)", flexShrink: 0 }}>🍟</div>
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg, #5868E0, #3F4FC0)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-sm)", flexShrink: 0 }}>
+                <span style={{ color: "#fff", fontWeight: 800, fontSize: 17, letterSpacing: "-0.04em" }}>SB</span>
+              </div>
               <div style={{ minWidth: 0 }}>
                 <p style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.1, whiteSpace: "nowrap" }}>{COMPANY.name}</p>
                 <p className="brand-subtitle" style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.1, marginTop: 2, whiteSpace: "nowrap", fontWeight: 500 }}>{COMPANY.tagline}</p>
