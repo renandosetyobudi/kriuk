@@ -91,6 +91,17 @@ const ICONS = {
   bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>,
   menu: <><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></>,
   user: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="8" r="4"/></>,
+  "trending-up": <><path d="M3 17 9.5 10.5l4 4L21 7"/><path d="M15 7h6v6"/></>,
+  "trending-down": <><path d="M3 7 9.5 13.5l4-4L21 17"/><path d="M15 17h6v-6"/></>,
+  coins: <><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6"/><path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></>,
+  grid: <><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></>,
+  list: <><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></>,
+  gem: <><path d="M6 3h12l3.5 5.5L12 21 2.5 8.5Z"/><path d="M2.5 8.5h19"/><path d="m12 3-2.5 5.5L12 21l2.5-12.5L12 3"/></>,
+  eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></>,
+  printer: <><path d="M6 9V3h12v6"/><path d="M6 18H4.5A1.5 1.5 0 0 1 3 16.5V11a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5.5a1.5 1.5 0 0 1-1.5 1.5H18"/><rect x="6" y="14" width="12" height="7" rx="1"/></>,
+  trash: <><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M6 6v14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6"/><path d="M10 11v6"/><path d="M14 11v6"/></>,
+  pencil: <><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></>,
+  banknote: <><rect x="2" y="6" width="20" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01"/><path d="M18 12h.01"/></>,
 };
 function Icon({ name, size = 20, stroke = 2, style }) {
   const paths = ICONS[name];
@@ -576,7 +587,7 @@ function StatCard({ label, value, sub, icon, color = "var(--brand)", soft, onCli
         cursor: onClick ? "pointer" : "default", transition: "all .2s cubic-bezier(.22,1,.36,1)",
         position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -20, right: -20, width: 80, height: 80, borderRadius: "50%", background: color, opacity: 0.05 }} />
-      <div style={{ width: 44, height: 44, borderRadius: 14, background: soft || color + "16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, marginBottom: 12 }}>{icon}</div>
+      <div style={{ width: 44, height: 44, borderRadius: 14, background: soft || color + "16", color: color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, marginBottom: 12 }}>{icon}</div>
       <p style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 4, fontWeight: 600 }}>{label}</p>
       <p className="tnum" style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)", lineHeight: 1.15, letterSpacing: "-0.02em" }}>{value}</p>
       {sub && <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, fontWeight: 500 }}>{sub}</p>}
@@ -603,9 +614,9 @@ function Tabs({ items, active, onChange }) {
         const on = active === t.id;
         return (
           <button key={t.id} onClick={() => onChange(t.id)}
-            style={{ padding: "9px 18px", borderRadius: 999, border: "none", fontSize: 14, fontWeight: on ? 800 : 600, cursor: "pointer", transition: "all 0.18s", fontFamily: "var(--font)",
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 999, border: "none", fontSize: 14, fontWeight: on ? 800 : 600, cursor: "pointer", transition: "all 0.18s", fontFamily: "var(--font)",
               background: on ? "var(--surface)" : "transparent", color: on ? "var(--ink)" : "var(--muted)", boxShadow: on ? "var(--shadow-xs)" : "none", letterSpacing: "-0.01em" }}>
-            {t.icon && <span style={{ marginRight: 5 }}>{t.icon}</span>}{t.label}
+            {t.icon && (ICONS[t.icon] ? <Icon name={t.icon} size={16} /> : <span>{t.icon}</span>)}{t.label}
           </button>
         );
       })}
@@ -884,12 +895,12 @@ function Dashboard({ data, setPage }) {
       )}
 
       <div className="stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
-        <StatCard label="Omset Hari Ini" value={fmtShort(todayIncome)} icon="💸" color="var(--green)" soft="var(--green-soft)" onClick={() => setPage("finance")} />
-        <StatCard label="Omset Bulan Ini" value={fmtShort(monthIncome)} icon="📈" color="var(--brand)" soft="var(--brand-soft)" onClick={() => setPage("finance")} />
-        <StatCard label="Pengeluaran" value={fmtShort(monthExpense)} icon="💳" color="var(--red)" soft="var(--red-soft)" onClick={() => setPage("finance")} />
-        <StatCard label="Laba Bersih" value={fmtShort(monthIncome - monthExpense)} icon="✨" color="var(--amber)" soft="var(--amber-soft)" onClick={() => setPage("finance")} />
-        <StatCard label="Toko Aktif" value={stores.length} icon="🏪" color="var(--blue)" soft="var(--blue-soft)" onClick={() => setPage("stores")} />
-        <StatCard label="Titipan Beredar" value={`${activeC.length} item`} icon="📦" color="var(--brand-deep)" soft="var(--brand-soft)" onClick={() => setPage("stores")} />
+        <StatCard label="Omset Hari Ini" value={fmtShort(todayIncome)} icon={<Icon name="coins" size={20} />} color="var(--green)" soft="var(--green-soft)" onClick={() => setPage("finance")} />
+        <StatCard label="Omset Bulan Ini" value={fmtShort(monthIncome)} icon={<Icon name="trending-up" size={20} />} color="var(--brand)" soft="var(--brand-soft)" onClick={() => setPage("finance")} />
+        <StatCard label="Pengeluaran" value={fmtShort(monthExpense)} icon={<Icon name="trending-down" size={20} />} color="var(--red)" soft="var(--red-soft)" onClick={() => setPage("finance")} />
+        <StatCard label="Laba Bersih" value={fmtShort(monthIncome - monthExpense)} icon={<Icon name="wallet" size={20} />} color="var(--amber)" soft="var(--amber-soft)" onClick={() => setPage("finance")} />
+        <StatCard label="Toko Aktif" value={stores.length} icon={<Icon name="store" size={20} />} color="var(--blue)" soft="var(--blue-soft)" onClick={() => setPage("stores")} />
+        <StatCard label="Titipan Beredar" value={`${activeC.length} item`} icon={<Icon name="package" size={20} />} color="var(--brand-deep)" soft="var(--brand-soft)" onClick={() => setPage("stores")} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 16, marginBottom: 16 }} className="dash-grid">
@@ -1185,7 +1196,7 @@ function Finance({ data, setData }) {
       <SectionHeader title="Keuangan" sub="Catat omset, pengeluaran, dan lihat laporan"
         action={<Btn icon="+" onClick={() => setShowAdd(true)}>Catat Transaksi</Btn>} />
 
-      <Tabs items={[{id:"ringkasan",label:"Ringkasan",icon:"📊"},{id:"grafik",label:"Grafik",icon:"📈"},{id:"riwayat",label:"Riwayat",icon:"📋"},{id:"titipan",label:"Titipan",icon:"📦"},{id:"aset",label:"Aset",icon:"💎"}]} active={tab} onChange={setTab} />
+      <Tabs items={[{id:"ringkasan",label:"Ringkasan",icon:"grid"},{id:"grafik",label:"Grafik",icon:"trending-up"},{id:"riwayat",label:"Riwayat",icon:"list"},{id:"titipan",label:"Titipan",icon:"package"},{id:"aset",label:"Aset",icon:"gem"}]} active={tab} onChange={setTab} />
 
 
       <div style={{ marginTop: 20 }}>
@@ -1193,23 +1204,21 @@ function Finance({ data, setData }) {
           <div className="fade-up">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 20 }}>
               {[
-                { l:"Omset Bulan Ini", v:fmt(totalIn), c:"var(--green)", bg:"var(--green-soft)", icon:"💚", key:"omset" },
-                { l:"Pengeluaran Bulan Ini", v:fmt(totalEx), c:"var(--red)", bg:"var(--red-soft)", icon:"🔴", key:"pengeluaran" },
-                { l:"Laba Bersih", v:fmt(totalIn-totalEx), c:"var(--brand)", bg:"var(--brand-soft)", icon:"✨", key:"laba" },
+                { l:"Omset Bulan Ini", v:fmt(totalIn), c:"var(--green)", bg:"var(--green-soft)", icon:"trending-up", key:"omset", neg:false },
+                { l:"Pengeluaran Bulan Ini", v:fmt(totalEx), c:"var(--red)", bg:"var(--red-soft)", icon:"trending-down", key:"pengeluaran", neg:false },
+                { l:"Laba Bersih", v:fmt(totalIn-totalEx), c:"var(--brand)", bg:"var(--brand-soft)", icon:"coins", key:"laba", neg:(totalIn-totalEx) < 0 },
               ].map(x => (
                 <button key={x.l} onClick={() => setMetricDetail(x.key)}
-                  style={{ background: x.bg, borderRadius: "var(--r)", padding: 18, border: "1.5px solid " + x.c + "30", textAlign:"left", cursor:"pointer", fontFamily:"var(--font)", transition:"all 0.18s" }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "var(--shadow)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
-                  <div style={{ display: "flex", justifyContent:"space-between", alignItems: "center", marginBottom: 10 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <span style={{ fontSize: 22 }}>{x.icon}</span>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: x.c }}>{x.l}</p>
-                    </div>
-                    <span style={{ color: x.c, fontSize: 14, opacity: 0.6 }}>📈</span>
+                  style={{ background: "var(--surface)", borderRadius: "var(--r)", padding: 18, border: "1.5px solid var(--line)", textAlign:"left", cursor:"pointer", fontFamily:"var(--font)", transition:"all 0.18s", boxShadow:"var(--shadow-xs)" }}
+                  onMouseEnter={e => { e.currentTarget.style.boxShadow = "var(--shadow-sm)"; e.currentTarget.style.borderColor = x.c + "55"; }}
+                  onMouseLeave={e => { e.currentTarget.style.boxShadow = "var(--shadow-xs)"; e.currentTarget.style.borderColor = "var(--line)"; }}>
+                  <div style={{ display: "flex", justifyContent:"space-between", alignItems: "center", marginBottom: 14 }}>
+                    <span style={{ width: 40, height: 40, borderRadius: 12, background: x.bg, color: x.c, display:"flex", alignItems:"center", justifyContent:"center" }}><Icon name={x.icon} size={20} /></span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Bulan ini</span>
                   </div>
-                  <p className="tnum" style={{ fontSize: 22, fontWeight: 800, color: x.c }}>{x.v}</p>
-                  <p style={{ fontSize: 11.5, color: x.c, opacity: 0.75, marginTop: 6, fontWeight: 600 }}>Ketuk untuk lihat grafik →</p>
+                  <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>{x.l}</p>
+                  <p className="tnum" style={{ fontSize: 23, fontWeight: 800, color: x.neg ? "var(--red)" : x.c, letterSpacing: "-0.02em", lineHeight: 1.15 }}>{x.v}</p>
+                  <p style={{ fontSize: 11.5, color: "var(--ink-2)", marginTop: 10, fontWeight: 600, display:"flex", alignItems:"center", gap:5, opacity:0.8 }}>Lihat grafik <span style={{ color: x.c }}>→</span></p>
                 </button>
               ))}
             </div>
@@ -2530,7 +2539,7 @@ function NotaPreviewModal({ receipt, onClose }) {
       </div>
       <div style={{ display:"flex", gap:10 }}>
         <Btn full variant="ghost" onClick={onClose}>Tutup</Btn>
-        <Btn full icon="🖨️" onClick={() => printNota(receipt, COMPANY)}>Cetak Nota</Btn>
+        <Btn full icon={<Icon name="printer" size={16} />} onClick={() => printNota(receipt, COMPANY)}>Cetak Nota</Btn>
       </div>
     </Modal>
   );
@@ -2563,10 +2572,10 @@ function Receipts({ data, setData }) {
       <SectionHeader title="Nota & Bukti" sub="Riwayat nota penitipan, pembayaran & penjualan tunai" />
 
       <div className="stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
-        <StatCard label="Total Nota" value={receipts.length} icon="🧾" color="var(--brand)" soft="var(--brand-soft)" />
-        <StatCard label="Nota Penitipan" value={receipts.filter(r=>r.type==="drop").length} sub={fmt(totalDrop)} icon="📦" color="var(--blue)" soft="var(--blue-soft)" />
-        <StatCard label="Nota Pembayaran" value={receipts.filter(r=>r.type==="payment").length} sub={fmt(totalPay)} icon="💰" color="var(--amber)" soft="var(--amber-soft)" />
-        <StatCard label="Penjualan Tunai" value={receipts.filter(r=>r.type==="cash").length} sub={fmt(totalCash)} icon="💵" color="var(--green)" soft="var(--green-soft)" />
+        <StatCard label="Total Nota" value={receipts.length} icon={<Icon name="receipt" size={20} />} color="var(--brand)" soft="var(--brand-soft)" />
+        <StatCard label="Nota Penitipan" value={receipts.filter(r=>r.type==="drop").length} sub={fmt(totalDrop)} icon={<Icon name="package" size={20} />} color="var(--blue)" soft="var(--blue-soft)" />
+        <StatCard label="Nota Pembayaran" value={receipts.filter(r=>r.type==="payment").length} sub={fmt(totalPay)} icon={<Icon name="coins" size={20} />} color="var(--amber)" soft="var(--amber-soft)" />
+        <StatCard label="Penjualan Tunai" value={receipts.filter(r=>r.type==="cash").length} sub={fmt(totalCash)} icon={<Icon name="banknote" size={20} />} color="var(--green)" soft="var(--green-soft)" />
       </div>
 
       <Card style={{ padding: 14, marginBottom: 16 }}>
@@ -2588,26 +2597,24 @@ function Receipts({ data, setData }) {
         <Card><EmptyState icon="📭" title="Belum ada nota" sub="Nota akan otomatis dibuat saat drop barang & kunjungan tagih" /></Card>
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
-          {filtered.map(r => { const m = notaMeta(r.type); return (
+          {filtered.map(r => { const m = notaMeta(r.type); const ic = ({ drop: "package", cash: "banknote", payment: "coins" })[r.type] || "receipt"; return (
             <Card key={r.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flex: 1, minWidth: 0 }}>
-                  <div style={{ width: 50, height: 50, borderRadius: 13, background: m.soft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>{m.icon}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                      <Tag color={m.color}>NOTA {m.label}</Tag>
-                      <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>{r.notaNo}</span>
-                    </div>
-                    <p style={{ fontWeight: 800, fontSize: 15.5, marginBottom: 2 }}>{r.storeName}</p>
-                    <p style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500 }}>{fmtDate(r.date)} · {(r.items||[]).length} item</p>
-                    <p className="tnum" style={{ fontSize: 18, fontWeight: 800, color: m.color, marginTop: 6 }}>{fmt(r.total)}</p>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 13 }}>
+                <div style={{ width: 46, height: 46, borderRadius: 13, background: m.soft, color: m.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name={ic} size={22} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+                    <Tag color={m.color}>NOTA {m.label}</Tag>
+                    <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700 }}>{r.notaNo}</span>
                   </div>
+                  <p style={{ fontWeight: 800, fontSize: 15.5, lineHeight: 1.25, wordBreak: "break-word" }}>{r.storeName}</p>
+                  <p style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500, marginTop: 2 }}>{fmtDate(r.date)} · {(r.items || []).length} item</p>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Btn size="sm" variant="outline" icon="👁" onClick={() => setPreview(r)}>Lihat</Btn>
-                  <Btn size="sm" variant="primary" icon="🖨️" onClick={() => printNota(r, COMPANY)}>Cetak</Btn>
-                  <Btn size="sm" variant="danger" onClick={() => askDelete(r)}>🗑</Btn>
-                </div>
+                <p className="tnum" style={{ fontSize: 18, fontWeight: 800, color: m.color, flexShrink: 0, whiteSpace: "nowrap" }}>{fmt(r.total)}</p>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+                <Btn size="sm" variant="outline" full icon={<Icon name="eye" size={15} />} onClick={() => setPreview(r)}>Lihat</Btn>
+                <Btn size="sm" variant="primary" full icon={<Icon name="printer" size={15} />} onClick={() => printNota(r, COMPANY)}>Cetak</Btn>
+                <Btn size="sm" variant="danger" onClick={() => askDelete(r)}><Icon name="trash" size={15} /></Btn>
               </div>
             </Card>
           ); })}
