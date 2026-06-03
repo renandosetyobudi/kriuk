@@ -3,7 +3,7 @@
 // Key gratis tanpa kartu: https://aistudio.google.com/apikey
 // Output dibuat sama persis seperti versi lain, jadi aplikasi TIDAK perlu diubah.
 
-const MODEL = "gemini-1.5-flash"; // gratis & cepat. Alternatif: "gemini-2.0-flash".
+const MODEL = "gemini-3.5-flash"; // gratis & cepat. Alternatif: "gemini-2.0-flash".
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Gunakan POST" });
