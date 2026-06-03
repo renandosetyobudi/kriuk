@@ -90,6 +90,24 @@ const today = new Date().toISOString().split("T")[0];
 const thisMonth = today.slice(0, 7);
 const dayNames = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 const todayDay = dayNames[new Date().getDay()];
+const dayIdx = { Minggu:0, Senin:1, Selasa:2, Rabu:3, Kamis:4, Jumat:5, Sabtu:6 };
+const daysUntilDay = (name) => { const t = dayIdx[name]; return t == null ? null : (t - new Date().getDay() + 7) % 7; };
+const nextVisitForDays = (days) => { const arr = (days || []).map(daysUntilDay).filter(x => x != null); return arr.length ? Math.min(...arr) : null; };
+const whenLabel = (n) => n === 0 ? "Hari ini" : n === 1 ? "Besok" : n === 2 ? "Lusa" : `${n} hari lagi`;
+// Pengingat: rute yang dikunjungi ≤2 hari lagi + catatan toko di rute itu
+const buildReminders = (data) => {
+  const list = [];
+  (data.routes || []).forEach(r => {
+    const n = nextVisitForDays(r.days);
+    if (n == null || n > 2) return;
+    const storesIn = (data.stores || []).filter(s => s.routeId === r.id);
+    const dayName = (r.days || []).find(d => daysUntilDay(d) === n) || "";
+    list.push({ id: `route-${r.id}`, kind: "route", title: `Kunjungan ${r.name}`, detail: `${storesIn.length} toko${dayName ? ` · ${dayName}` : ""}`, when: n, whenLabel: whenLabel(n) });
+    storesIn.forEach(s => { if (s.note && String(s.note).trim()) list.push({ id: `note-${s.id}`, kind: "note", title: s.name, detail: String(s.note).trim(), when: n, whenLabel: whenLabel(n), storeId: s.id }); });
+  });
+  list.sort((a, b) => a.when - b.when || (a.kind === b.kind ? 0 : a.kind === "route" ? -1 : 1));
+  return list;
+};
 
 const INIT = {
   products: [
@@ -630,6 +648,54 @@ const NAV = [
   { id: "settings", label: "Pengaturan", icon: "⚙️", desc: "Backup & restore data" },
 ];
 const BOTTOM_TABS = ["dashboard", "stores", "finance", "receipts"]; // + "more"
+
+// Notification bell (top-right) — pengingat kunjungan & catatan toko
+function NotificationBell({ reminders, onOpenStore }) {
+  const [open, setOpen] = useState(false);
+  const count = reminders.length;
+  return (
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <button onClick={() => setOpen(o => !o)} aria-label="Notifikasi" title="Pengingat"
+        style={{ position: "relative", width: 42, height: 42, borderRadius: 12, border: "1.5px solid var(--line)", background: "var(--surface)", cursor: "pointer", fontSize: 19, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-xs)" }}>
+        🔔
+        {count > 0 && <span style={{ position: "absolute", top: -5, right: -5, minWidth: 19, height: 19, padding: "0 5px", borderRadius: 99, background: "var(--red)", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid var(--surface)" }}>{count > 9 ? "9+" : count}</span>}
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 1290 }} />
+          <div style={{ position: "absolute", top: "calc(100% + 10px)", right: 0, width: "min(360px, calc(100vw - 28px))", maxHeight: "70vh", overflowY: "auto", background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 14, boxShadow: "0 16px 40px rgba(33,26,18,0.20)", zIndex: 1300, padding: 12, animation: "drawerIn .16s ease" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <p style={{ fontSize: 14.5, fontWeight: 800 }}>🔔 Pengingat</p>
+              <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700 }}>{count} aktif</span>
+            </div>
+            {count === 0 ? (
+              <div style={{ textAlign: "center", padding: "22px 8px" }}>
+                <div style={{ fontSize: 30, marginBottom: 8 }}>✅</div>
+                <p style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>Tidak ada kunjungan rute dalam 2 hari ke depan.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {reminders.map(r => (
+                  <button key={r.id} onClick={() => { if (r.storeId) { onOpenStore(r.storeId); setOpen(false); } }}
+                    style={{ textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start", background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 11, padding: "10px 12px", cursor: r.storeId ? "pointer" : "default", fontFamily: "var(--font)", width: "100%" }}>
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>{r.kind === "route" ? "📍" : "📝"}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--ink)" }}>{r.title}</span>
+                        <span style={{ fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 99, background: r.when === 0 ? "var(--red)" : r.when === 1 ? "var(--brand)" : "var(--amber)", color: "#fff" }}>{r.whenLabel}</span>
+                      </span>
+                      <span style={{ display: "block", fontSize: 12.5, color: "var(--ink-2)", marginTop: 2, fontWeight: 500, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{r.detail}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // Desktop top nav
 function TopNav({ page, setPage }) {
@@ -1329,6 +1395,10 @@ function StoreDetail({ store, data, setData, onBack }) {
   const [visitItems, setVisitItems] = useState([]);
   const [editForm, setEditForm] = useState({ name: store.name, address: store.address, contact: store.contact, routeId: store.routeId, lat: store.lat, lng: store.lng });
   const [editStock, setEditStock] = useState(null);
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const nextVisit = nextVisitForDays(route?.days);
+  const saveNote = () => { setData(d => ({ ...d, stores: d.stores.map(s => s.id === store.id ? { ...s, note: noteDraft.trim() } : s) })); setEditingNote(false); };
   const { confirm, Dialog } = useConfirm();
 
   const tagihan = sc.reduce((sum,c) => { const p = products.find(x => x.id === c.productId); return sum + (p ? (c.deposited - c.remaining) * p.price : 0); }, 0);
@@ -1494,6 +1564,31 @@ function StoreDetail({ store, data, setData, onBack }) {
           )}
         </div>
         <Btn full size="lg" variant="success" icon="💵" onClick={() => setShowCash(true)}>Jual Tunai (Bayar Cash)</Btn>
+      </Card>
+
+      <Card style={{ marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: (editingNote || store.note) ? 10 : 0, gap:8 }}>
+          <p style={{ fontSize:14.5, fontWeight:800 }}>📝 Catatan & Pengingat Toko</p>
+          {!editingNote && <Btn variant="ghost" size="sm" icon={store.note ? "✏️" : "+"} onClick={() => { setNoteDraft(store.note || ""); setEditingNote(true); }}>{store.note ? "Ubah" : "Tambah"}</Btn>}
+        </div>
+        {editingNote ? (
+          <div>
+            <textarea rows={3} value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder="mis. Tagih pembayaran bulan lalu · bawa stok extra Kriuk · pemilik minta dikabari sebelum datang" style={{ width:"100%", resize:"vertical" }} />
+            <div style={{ display:"flex", gap:8, marginTop:10 }}>
+              <Btn variant="ghost" size="sm" onClick={() => setEditingNote(false)}>Batal</Btn>
+              <Btn size="sm" icon="✓" onClick={saveNote}>Simpan</Btn>
+            </div>
+          </div>
+        ) : store.note ? (
+          <p style={{ fontSize:13.5, color:"var(--ink-2)", whiteSpace:"pre-wrap", lineHeight:1.55, fontWeight:500, background:"var(--amber-soft)", border:"1.5px solid var(--line)", borderRadius:10, padding:"10px 12px" }}>{store.note}</p>
+        ) : (
+          <p style={{ fontSize:13, color:"var(--muted)", fontWeight:500 }}>Belum ada catatan. Tambahkan pengingat yang akan muncul di 🔔 saat mendekati hari kunjungan.</p>
+        )}
+        {nextVisit != null && (
+          <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:8, fontSize:12.5, fontWeight:700, color: nextVisit <= 2 ? "var(--brand-deep)" : "var(--muted)", background: nextVisit <= 2 ? "var(--brand-soft)" : "var(--bg)", border:"1.5px solid var(--line)", borderRadius:9, padding:"8px 11px" }}>
+            🔔 Kunjungan {route?.name}: {whenLabel(nextVisit)}{nextVisit <= 2 ? " — pengingat aktif" : ""}
+          </div>
+        )}
       </Card>
 
       <Card style={{ marginBottom:16 }}>
@@ -2660,7 +2755,7 @@ Aturan:
 KAMU JUGA BISA MENGELOLA DATA. Jika pemilik MEMINTA menambah/mencatat/mengubah sesuatu (bukan sekadar bertanya), sertakan SATU blok kode \`\`\`json berisi {"actions":[ ... ]} di AKHIR pesan, didahului 1 kalimat ringkas konfirmasi. Jika pemilik hanya BERTANYA, jawab teks biasa TANPA blok json.
 
 Jenis aksi (pakai persis nama field-nya, uang sebagai angka polos tanpa "Rp", tanggal "YYYY-MM-DD"):
-- {"type":"add_store","name":"...","routeName":"(opsional)","address":"(opsional)","contact":"(opsional)"}
+- {"type":"add_store","name":"...","routeName":"(opsional)","address":"(opsional)","contact":"(opsional)","note":"(opsional, catatan/pengingat toko)"}
 - {"type":"add_product","name":"...","price":8000,"costPrice":4000}
 - {"type":"add_route","name":"...","days":["Senin","Kamis"]}
 - {"type":"cash_sale","storeName":"...","items":[{"product":"...","qty":5}],"date":"(opsional)"}   // penjualan tunai (bukan titipan)
@@ -2670,7 +2765,7 @@ Jenis aksi (pakai persis nama field-nya, uang sebagai angka polos tanpa "Rp", ta
 - {"type":"add_income","amount":100000,"category":"(opsional)","note":"(opsional)","date":"(opsional)"}
 - {"type":"add_expense","amount":50000,"category":"(opsional)","note":"(opsional)","date":"(opsional)"}
 - {"type":"add_note","content":"...","pinned":false}
-- {"type":"update_store","name":"(nama toko yang sudah ada)","newName":"(opsional)","routeName":"(opsional)","address":"(opsional)","contact":"(opsional)"}   // PERBAIKI toko yang sudah ada
+- {"type":"update_store","name":"(nama toko yang sudah ada)","newName":"(opsional)","routeName":"(opsional)","address":"(opsional)","contact":"(opsional)","note":"(opsional, catatan/pengingat toko)"}   // PERBAIKI toko yang sudah ada
 - {"type":"update_product","name":"(produk yang sudah ada)","price":12000,"costPrice":5000,"newName":"(opsional)"}
 - {"type":"delete_store","name":"...","onlyEmpty":true}   // hapus toko; onlyEmpty=true hanya menghapus yang TIDAK punya stok (untuk bersihkan duplikat)
 - {"type":"delete_product","name":"..."}
@@ -2746,7 +2841,7 @@ Aturan aksi:
       case "add_income": return `🟢 Catat pemasukan ${fmt(+a.amount || 0)}${a.note ? ` — ${a.note}` : ""}`;
       case "add_expense": return `🔴 Catat pengeluaran ${fmt(+a.amount || 0)}${a.note ? ` — ${a.note}` : ""}`;
       case "add_note": return `📝 Catatan: "${String(a.content || "").slice(0, 70)}"`;
-      case "update_store": return `✏️ Ubah toko "${a.name || a.storeName}"${a.newName ? ` → "${a.newName}"` : ""}${a.routeName ? ` (rute ${a.routeName})` : ""}`;
+      case "update_store": return `✏️ Ubah toko "${a.name || a.storeName}"${a.newName ? ` → "${a.newName}"` : ""}${a.routeName ? ` (rute ${a.routeName})` : ""}${a.note != null ? ` (catatan: "${String(a.note).slice(0,40)}")` : ""}`;
       case "update_product": return `✏️ Ubah produk "${a.name}"${a.newName ? ` → "${a.newName}"` : ""}${a.price != null ? ` — jual ${fmt(+a.price)}` : ""}`;
       case "delete_store": return `🗑 Hapus toko "${a.name || a.storeName}"${a.onlyEmpty ? " (yang kosong)" : ""}`;
       case "delete_product": return `🗑 Hapus produk "${a.name}"`;
@@ -2806,10 +2901,10 @@ Aturan aksi:
             const rt = a.routeName ? ensureRoute(a.routeName) : null;
             const existing = findStoreExact(a.name);
             if (existing) {
-              nd.stores = nd.stores.map(s => s.id === existing.id ? { ...s, routeId: rt ? rt.id : s.routeId, address: a.address || s.address, contact: a.contact || s.contact } : s);
+              nd.stores = nd.stores.map(s => s.id === existing.id ? { ...s, routeId: rt ? rt.id : s.routeId, address: a.address || s.address, contact: a.contact || s.contact, note: a.note != null ? a.note : s.note } : s);
               results.push(`• Toko "${a.name}" sudah ada — diperbarui${rt ? ` (rute ${rt.name})` : ""} (tidak diduplikat).`);
             } else {
-              nd.stores = [...nd.stores, { id: uid(), createdAt: Date.now(), name: a.name, address: a.address || "", contact: a.contact || "", routeId: rt ? rt.id : "" }];
+              nd.stores = [...nd.stores, { id: uid(), createdAt: Date.now(), name: a.name, address: a.address || "", contact: a.contact || "", routeId: rt ? rt.id : "", note: a.note || "" }];
               results.push(`✓ Toko "${a.name}" ditambahkan${rt ? ` (rute ${rt.name})` : ""}.`);
             }
             break;
@@ -2882,7 +2977,7 @@ Aturan aksi:
             const target = findStoreExact(a.name || a.storeName) || findStore(a.name || a.storeName);
             if (!target) { results.push(`⚠️ Update toko: "${a.name || a.storeName}" tidak ditemukan.`); break; }
             const rt = a.routeName ? ensureRoute(a.routeName) : null;
-            nd.stores = nd.stores.map(s => s.id === target.id ? { ...s, name: a.newName || s.name, routeId: rt ? rt.id : s.routeId, address: a.address != null ? a.address : s.address, contact: a.contact != null ? a.contact : s.contact } : s);
+            nd.stores = nd.stores.map(s => s.id === target.id ? { ...s, name: a.newName || s.name, routeId: rt ? rt.id : s.routeId, address: a.address != null ? a.address : s.address, contact: a.contact != null ? a.contact : s.contact, note: a.note != null ? a.note : s.note } : s);
             results.push(`✓ Toko "${target.name}" diperbarui${a.newName ? ` → "${a.newName}"` : ""}${rt ? ` (rute ${rt.name})` : ""}.`); break;
           }
           case "update_product": {
@@ -3164,6 +3259,7 @@ export default function App() {
   };
 
   const tdyDate = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long" });
+  const reminders = buildReminders(data);
 
   return (
     <>
@@ -3181,9 +3277,12 @@ export default function App() {
             <div className="nav-wrap" style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
               <TopNav page={page} setPage={navigate} />
             </div>
-            <div style={{ textAlign: "right", flexShrink: 0 }} className="date-display">
-              <p style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>{todayDay}</p>
-              <p style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500 }}>{tdyDate}</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+              <NotificationBell reminders={reminders} onOpenStore={(id) => { setSelectedStoreId(id); navigate("stores"); }} />
+              <div style={{ textAlign: "right" }} className="date-display">
+                <p style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>{todayDay}</p>
+                <p style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500 }}>{tdyDate}</p>
+              </div>
             </div>
           </div>
         </header>
