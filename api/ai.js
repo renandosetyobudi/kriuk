@@ -1,42 +1,48 @@
-// api/ai.js — versi GRATIS pakai Groq (API kompatibel OpenAI).
-// Key gratis tanpa kartu kredit: https://console.groq.com/keys
-// Output dibuat sama persis seperti versi sebelumnya, jadi aplikasi TIDAK perlu diubah.
+// api/ai.js — versi GRATIS pakai Google Gemini.
+// Limit gratisnya JAUH lebih besar dari Groq (cocok untuk data/daftar besar).
+// Key gratis tanpa kartu: https://aistudio.google.com/apikey
+// Output dibuat sama persis seperti versi lain, jadi aplikasi TIDAK perlu diubah.
 
-const MODEL = "llama-3.3-70b-versatile"; // gratis & pintar. Alternatif lebih cepat: "llama-3.1-8b-instant".
+const MODEL = "gemini-1.5-flash"; // gratis & cepat. Alternatif: "gemini-2.0-flash".
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Gunakan POST" });
   try {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: "GROQ_API_KEY belum diset di Vercel" });
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY belum diset di Vercel" });
 
     const { system, messages } = req.body || {};
     if (!Array.isArray(messages)) return res.status(400).json({ error: "messages harus array" });
 
-    const chat = [];
-    if (system) chat.push({ role: "system", content: String(system) });
+    // Gemini memakai role "user"/"model" + parts
+    const contents = [];
     for (const m of messages) {
       if (m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string") {
-        chat.push({ role: m.role, content: m.content });
+        contents.push({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] });
       }
     }
 
-    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const body = { contents, generationConfig: { temperature: 0.3, maxOutputTokens: 4096 } };
+    if (system) body.system_instruction = { parts: [{ text: String(system) }] };
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
+    const r = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: MODEL, temperature: 0.3, max_tokens: 8000, messages: chat }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
 
     if (!r.ok) {
       const detail = await r.text();
-      console.error("Groq error", r.status, detail); // muncul di Vercel → Logs
-      return res.status(502).json({ error: "Groq menolak permintaan", status: r.status, detail });
+      console.error("Gemini error", r.status, detail); // muncul di Vercel → Logs
+      return res.status(502).json({ error: "Gemini menolak permintaan", status: r.status, detail });
     }
 
     const data = await r.json();
-    const text = ((data.choices?.[0]?.message?.content) || "").trim();
+    const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    const text = parts.map(p => p.text || "").join("").trim();
     return res.status(200).json({ content: [{ type: "text", text }], text });
   } catch (e) {
-    return res.status(500).json({ error: "Server error", detail: String(e?.message || e) });
+    return res.status(500).json({ error: "Server error", detail: String((e && e.message) || e) });
   }
 }
