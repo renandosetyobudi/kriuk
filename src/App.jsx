@@ -94,6 +94,17 @@ const dayIdx = { Minggu:0, Senin:1, Selasa:2, Rabu:3, Kamis:4, Jumat:5, Sabtu:6 
 const daysUntilDay = (name) => { const t = dayIdx[name]; return t == null ? null : (t - new Date().getDay() + 7) % 7; };
 const nextVisitForDays = (days) => { const arr = (days || []).map(daysUntilDay).filter(x => x != null); return arr.length ? Math.min(...arr) : null; };
 const whenLabel = (n) => n === 0 ? "Hari ini" : n === 1 ? "Besok" : n === 2 ? "Lusa" : `${n} hari lagi`;
+const idMonths = { januari:"01", februari:"02", maret:"03", april:"04", mei:"05", juni:"06", juli:"07", agustus:"08", september:"09", oktober:"10", november:"11", desember:"12" };
+const resolveMonth = (m) => {
+  if (!m) return null;
+  const s = String(m).trim().toLowerCase();
+  if (/^\d{4}-\d{1,2}$/.test(s)) { const [y, mo] = s.split("-"); return `${y}-${mo.padStart(2, "0")}`; }
+  const parts = s.split(/\s+/);
+  const year = parts.find(p => /^\d{4}$/.test(p)) || String(new Date().getFullYear());
+  const nameKey = Object.keys(idMonths).find(k => parts.includes(k)) || (idMonths[s] ? s : null);
+  return nameKey ? `${year}-${idMonths[nameKey]}` : null;
+};
+const normTxType = (t) => { const s = String(t || "").toLowerCase(); if (/masuk|income|pemasukan|omset|jual/.test(s)) return "income"; if (/keluar|expense|pengeluaran|beli|biaya/.test(s)) return "expense"; return null; };
 // Pengingat: rute yang dikunjungi ≤2 hari lagi + catatan toko di rute itu
 const buildReminders = (data) => {
   const list = [];
@@ -155,6 +166,7 @@ const INIT = {
   ],
   receipts: [],
   receiptCounter: 1,
+  assets: [],
 };
 
 // ─────────────────────────────────────────────
@@ -1110,12 +1122,37 @@ function Finance({ data, setData }) {
   }, {})).sort((a, b) => b.value - a.value);
   const routeOf = (id) => routes.find(r => r.id === id);
 
+  // ── Aset (assets) ──
+  const assets = data.assets || [];
+  const [showAsset, setShowAsset] = useState(false);
+  const [editAssetId, setEditAssetId] = useState(null);
+  const [assetForm, setAssetForm] = useState({ name: "", type: "kas", value: "", note: "" });
+  const assetCat = { kas: { label: "Kas & Bank", icon: "💵", color: "var(--green)" }, alat: { label: "Peralatan & Inventaris", icon: "🛠️", color: "var(--blue)" }, lainnya: { label: "Lainnya", icon: "📦", color: "var(--brand)" } };
+  const openNewAsset = (type) => { setEditAssetId(null); setAssetForm({ name: "", type: type || "kas", value: "", note: "" }); setShowAsset(true); };
+  const openEditAsset = (a) => { setEditAssetId(a.id); setAssetForm({ name: a.name, type: ["kas", "alat"].includes(a.type) ? a.type : "lainnya", value: String(a.value ?? ""), note: a.note || "" }); setShowAsset(true); };
+  const saveAsset = () => {
+    if (!assetForm.name.trim() || assetForm.value === "") return;
+    const val = +assetForm.value || 0;
+    if (editAssetId) setData(d => ({ ...d, assets: (d.assets || []).map(x => x.id === editAssetId ? { ...x, name: assetForm.name.trim(), type: assetForm.type, value: val, note: assetForm.note.trim() } : x) }));
+    else setData(d => ({ ...d, assets: [{ id: uid(), name: assetForm.name.trim(), type: assetForm.type, value: val, note: assetForm.note.trim() }, ...(d.assets || [])] }));
+    setShowAsset(false);
+  };
+  const askDeleteAsset = (a) => confirm({ title: "Hapus Aset?", message: `"${a.name}" (${fmt(a.value)}) akan dihapus.`, confirmText: "Ya, Hapus", onConfirm: () => setData(d => ({ ...d, assets: (d.assets || []).filter(x => x.id !== a.id) })) });
+
+  const kasTotal = assets.filter(a => a.type === "kas").reduce((s, a) => s + (a.value || 0), 0);
+  const alatTotal = assets.filter(a => a.type === "alat").reduce((s, a) => s + (a.value || 0), 0);
+  const lainTotal = assets.filter(a => !["kas", "alat"].includes(a.type)).reduce((s, a) => s + (a.value || 0), 0);
+  const manualTotal = kasTotal + alatTotal + lainTotal;
+  const piutangAset = consignments.filter(c => c.status === "active").reduce((s, c) => { const p = products.find(x => x.id === c.productId); return s + (p ? Math.max(0, (c.deposited || 0) - (c.remaining || 0)) * p.price : 0); }, 0);
+  const nilaiTitipanAll = titipanRows.reduce((s, r) => s + r.value, 0);
+  const totalAset = manualTotal + piutangAset + nilaiTitipanAll;
+
   return (
     <div className="fade-up">
       <SectionHeader title="Keuangan" sub="Catat omset, pengeluaran, dan lihat laporan"
         action={<Btn icon="+" onClick={() => setShowAdd(true)}>Catat Transaksi</Btn>} />
 
-      <Tabs items={[{id:"ringkasan",label:"Ringkasan",icon:"📊"},{id:"grafik",label:"Grafik",icon:"📈"},{id:"riwayat",label:"Riwayat",icon:"📋"},{id:"titipan",label:"Titipan",icon:"📦"}]} active={tab} onChange={setTab} />
+      <Tabs items={[{id:"ringkasan",label:"Ringkasan",icon:"📊"},{id:"grafik",label:"Grafik",icon:"📈"},{id:"riwayat",label:"Riwayat",icon:"📋"},{id:"titipan",label:"Titipan",icon:"📦"},{id:"aset",label:"Aset",icon:"💎"}]} active={tab} onChange={setTab} />
 
 
       <div style={{ marginTop: 20 }}>
@@ -1342,6 +1379,81 @@ function Finance({ data, setData }) {
             </Card>
           </div>
         )}
+
+        {tab === "aset" && (
+          <div className="fade-up">
+            <p style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 500, marginBottom: 14, lineHeight: 1.5 }}>
+              Perkiraan total kekayaan usaha: kas/bank, peralatan, ditambah <b>piutang</b> & <b>nilai barang titipan</b> yang dihitung otomatis dari data toko.
+            </p>
+
+            <div style={{ background: "linear-gradient(135deg, #6E54C8, #4F39A8)", borderRadius: "var(--r)", padding: 20, color: "#fff", boxShadow: "0 10px 26px rgba(79,57,168,0.28)", marginBottom: 14 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, opacity: 0.92 }}>💎 Total Aset</p>
+              <p className="tnum" style={{ fontSize: 32, fontWeight: 800, marginTop: 4, lineHeight: 1.1 }}>{fmt(totalAset)}</p>
+              <p style={{ fontSize: 12, opacity: 0.85, marginTop: 6, fontWeight: 500 }}>Manual {fmt(manualTotal)} · Piutang {fmt(piutangAset)} · Titipan {fmt(nilaiTitipanAll)}</p>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 18 }}>
+              {[
+                { label: "Kas & Bank", icon: "💵", val: kasTotal, color: "var(--green)" },
+                { label: "Peralatan", icon: "🛠️", val: alatTotal, color: "var(--blue)" },
+                { label: "Piutang (toko)", icon: "🧾", val: piutangAset, color: "var(--brand-deep)", auto: true },
+                { label: "Nilai Titipan", icon: "📦", val: nilaiTitipanAll, color: "var(--brand)", auto: true },
+                ...(lainTotal > 0 ? [{ label: "Lainnya", icon: "📦", val: lainTotal, color: "var(--ink-2)" }] : []),
+              ].map((c, i) => (
+                <div key={i} style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 13, padding: 14 }}>
+                  <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>{c.icon} {c.label}{c.auto ? " ·auto" : ""}</p>
+                  <p className="tnum" style={{ fontSize: 18, fontWeight: 800, color: c.color, marginTop: 4 }}>{fmt(c.val)}</p>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
+              <p style={{ fontSize: 15, fontWeight: 800 }}>Daftar Aset</p>
+              <Btn size="sm" icon="+" onClick={() => openNewAsset("kas")}>Tambah Aset</Btn>
+            </div>
+
+            {assets.length === 0 ? (
+              <Card style={{ textAlign: "center", padding: "26px 16px" }}>
+                <div style={{ fontSize: 34, marginBottom: 8 }}>💎</div>
+                <p style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>Belum ada aset dicatat. Tambahkan kas, saldo bank, motor, etalase, dll.</p>
+                <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 6 }}>Piutang & nilai titipan sudah otomatis dihitung di atas.</p>
+              </Card>
+            ) : (
+              ["kas", "alat", "lainnya"].map(catKey => {
+                const items = assets.filter(a => catKey === "lainnya" ? !["kas", "alat"].includes(a.type) : a.type === catKey);
+                if (!items.length) return null;
+                const meta = assetCat[catKey];
+                return (
+                  <div key={catKey} style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <p style={{ fontSize: 12.5, fontWeight: 800, color: "var(--muted)" }}>{meta.icon} {meta.label}</p>
+                      <p className="tnum" style={{ fontSize: 12.5, fontWeight: 800, color: meta.color }}>{fmt(items.reduce((s, a) => s + (a.value || 0), 0))}</p>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {items.map(a => (
+                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 11, padding: "11px 13px" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", wordBreak: "break-word" }}>{a.name}</p>
+                            {a.note && <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>{a.note}</p>}
+                          </div>
+                          <p className="tnum" style={{ fontSize: 15, fontWeight: 800, color: meta.color, whiteSpace: "nowrap" }}>{fmt(a.value)}</p>
+                          <button onClick={() => openEditAsset(a)} title="Edit" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", cursor: "pointer", fontSize: 13 }}>✏️</button>
+                          <button onClick={() => askDeleteAsset(a)} title="Hapus" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--red)", cursor: "pointer", fontSize: 13 }}>🗑</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            <Card style={{ background: "var(--bg-2)", marginTop: 4 }}>
+              <p style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500, lineHeight: 1.55 }}>
+                ℹ️ <b>Piutang</b> = nilai barang yang sudah laku di toko tapi belum ditagih. <b>Nilai Titipan</b> = nilai barang yang masih ada di toko. Keduanya dihitung otomatis dari transaksi & stok, jadi tak perlu diinput manual.
+              </p>
+            </Card>
+          </div>
+        )}
       </div>
 
       <Modal show={showAdd} onClose={() => setShowAdd(false)} title="Catat Transaksi Baru">
@@ -1369,6 +1481,23 @@ function Finance({ data, setData }) {
         </div>
       </Modal>
       <MetricDetailModal metric={metricDetail} transactions={transactions} onClose={() => setMetricDetail(null)} />
+
+      <Modal show={showAsset} onClose={() => setShowAsset(false)} title={editAssetId ? "Edit Aset" : "Tambah Aset"}>
+        <FG label="Jenis Aset">
+          <select value={assetForm.type} onChange={e => setAssetForm(f => ({ ...f, type: e.target.value }))}>
+            <option value="kas">💵 Kas & Bank</option>
+            <option value="alat">🛠️ Peralatan & Inventaris</option>
+            <option value="lainnya">📦 Lainnya</option>
+          </select>
+        </FG>
+        <FG label="Nama Aset"><input placeholder="mis. Kas tunai, Saldo BCA, Motor, Etalase" value={assetForm.name} onChange={e => setAssetForm(f => ({ ...f, name: e.target.value }))} /></FG>
+        <FG label="Nilai (Rp)"><input type="number" inputMode="numeric" placeholder="1000000" value={assetForm.value} onChange={e => setAssetForm(f => ({ ...f, value: e.target.value }))} /></FG>
+        <FG label="Catatan (opsional)"><input placeholder="keterangan singkat" value={assetForm.note} onChange={e => setAssetForm(f => ({ ...f, note: e.target.value }))} /></FG>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn full variant="ghost" onClick={() => setShowAsset(false)}>Batal</Btn>
+          <Btn full onClick={saveAsset}>Simpan</Btn>
+        </div>
+      </Modal>
       <Dialog />
     </div>
   );
@@ -2769,6 +2898,9 @@ Jenis aksi (pakai persis nama field-nya, uang sebagai angka polos tanpa "Rp", ta
 - {"type":"update_product","name":"(produk yang sudah ada)","price":12000,"costPrice":5000,"newName":"(opsional)"}
 - {"type":"delete_store","name":"...","onlyEmpty":true}   // hapus toko; onlyEmpty=true hanya menghapus yang TIDAK punya stok (untuk bersihkan duplikat)
 - {"type":"delete_product","name":"..."}
+- {"type":"delete_transactions","month":"2026-05","type":"(opsional: masuk/keluar)","category":"(opsional)","note":"(opsional kata kunci)","date":"(opsional YYYY-MM-DD)","all":false}   // HAPUS transaksi keuangan sesuai filter. Bulan WAJIB format YYYY-MM. Hapus semua: all:true
+- {"type":"delete_note","content":"(opsional kata kunci)","date":"(opsional)","all":false}
+- {"type":"delete_receipts","month":"2026-05","type":"(opsional: drop/cash/payment)","storeName":"(opsional)","all":false}
 - {"type":"remember","fact":"..."}   // simpan preferensi/kebiasaan/koreksi pemilik agar kamu adaptasi ke depan
 - {"type":"forget","fact":"(kata kunci)"}   // atau {"type":"forget","all":true}
 
@@ -2783,6 +2915,7 @@ Aturan aksi:
 - MEMPERBAIKI / MENGOREKSI data yang SUDAH ADA: gunakan update_store / update_product / delete_store — JANGAN memakai add_store/add_product lagi (itu bisa membuat DUPLIKAT). Contoh: kalau toko sudah ada tapi rutenya salah/kosong → pakai update_store dengan routeName, bukan add_store.
 - Jika pemilik menyebut SATU rute untuk sekelompok toko (mis. "rute=mesuji"), WAJIB sertakan "routeName":"Mesuji" pada SETIAP add_store/update_store toko tersebut. Rute yang belum ada akan dibuat otomatis.
 - Untuk membersihkan toko duplikat, gunakan delete_store dengan "onlyEmpty":true (menghapus yang tanpa stok, menyisakan yang ada stok).
+- MENGHAPUS DATA: kamu BISA menghapus lewat delete_transactions / delete_note / delete_receipts / delete_store / delete_product. JANGAN PERNAH menjawab "belum bisa menghapus" atau menyuruh pemilik hapus manual — cukup keluarkan aksi delete yang sesuai; aplikasi akan menampilkan kartu konfirmasi sebelum benar-benar menghapus. Untuk "hapus transaksi/keuangan bulan Mei", ubah nama bulan ke format YYYY-MM memakai tahun dari tanggalHariIni (mis. Mei 2026 → "2026-05") lalu pakai delete_transactions {"month":"2026-05"}. Wajib ada minimal satu filter; gunakan all:true hanya bila pemilik jelas minta "semua/hapus total".
 - BELAJAR & ADAPTASI: bila pemilik mengajari sebuah kebiasaan/istilah/preferensi (mis. "k berarti ribuan", "produk default Kriuk", "tulis nama toko huruf besar"), ATAU mengoreksi kamu, sertakan aksi {"type":"remember","fact":"..."} (ringkas) agar kamu menerapkannya di chat berikutnya. Selalu patuhi bagian "INGATAN & PREFERENSI PEMILIK" jika ada.`;
 
   // ── Pengelolaan data lewat AI: parsing aksi + eksekusi (dengan konfirmasi) ──
@@ -2845,6 +2978,9 @@ Aturan aksi:
       case "update_product": return `✏️ Ubah produk "${a.name}"${a.newName ? ` → "${a.newName}"` : ""}${a.price != null ? ` — jual ${fmt(+a.price)}` : ""}`;
       case "delete_store": return `🗑 Hapus toko "${a.name || a.storeName}"${a.onlyEmpty ? " (yang kosong)" : ""}`;
       case "delete_product": return `🗑 Hapus produk "${a.name}"`;
+      case "delete_transactions": { const b = []; if (a.all) b.push("SEMUA"); if (a.month) b.push(`bln ${a.month}`); if (a.date) b.push(a.date); if (a.type) b.push(a.type); if (a.category) b.push(`kat. ${a.category}`); if (a.note) b.push(`"${a.note}"`); return `🗑 Hapus transaksi keuangan${b.length ? ` (${b.join(", ")})` : ""}`; }
+      case "delete_note": return `🗑 Hapus catatan${a.all ? " SEMUA" : a.content ? ` "${String(a.content).slice(0, 40)}"` : a.date ? ` (${a.date})` : ""}`;
+      case "delete_receipts": { const b = []; if (a.all) b.push("SEMUA"); if (a.month) b.push(`bln ${a.month}`); if (a.type) b.push(a.type); if (a.storeName) b.push(a.storeName); return `🗑 Hapus nota${b.length ? ` (${b.join(", ")})` : ""}`; }
       case "remember": return `🧠 Ingat: "${String(a.fact || a.content || "").slice(0, 80)}"`;
       case "forget": return a.all ? "🧠 Lupakan semua memori" : `🧠 Lupakan: "${String(a.fact || a.content || "").slice(0, 60)}"`;
       default: return `Aksi: ${a.type}`;
@@ -3003,6 +3139,63 @@ Aturan aksi:
             if (!target) { results.push(`⚠️ Hapus produk: "${a.name}" tidak ditemukan.`); break; }
             nd.products = nd.products.filter(p => p.id !== target.id);
             results.push(`✓ Produk "${target.name}" dihapus.`); break;
+          }
+          case "delete_transactions": {
+            const mon = a.month ? resolveMonth(a.month) : null;
+            if (a.month && !mon) { results.push(`⚠️ Hapus transaksi: bulan "${a.month}" tidak dikenali (pakai YYYY-MM).`); break; }
+            const typ = a.type ? normTxType(a.type) : null;
+            const catQ = a.category ? norm(a.category) : null;
+            const noteQ = a.note ? norm(a.note) : null;
+            const dateQ = a.date || null;
+            const hasFilter = !!(mon || dateQ || typ || catQ || noteQ);
+            if (!a.all && !hasFilter) { results.push("⚠️ Hapus transaksi: sebutkan kriteria (mis. bulan) atau set all:true."); break; }
+            const match = (t) => {
+              if (mon && !String(t.date).startsWith(mon)) return false;
+              if (dateQ && t.date !== dateQ) return false;
+              if (typ && t.type !== typ) return false;
+              if (catQ && !norm(t.category).includes(catQ)) return false;
+              if (noteQ && !norm(t.note).includes(noteQ)) return false;
+              return true;
+            };
+            const toDel = nd.transactions.filter(match);
+            if (!toDel.length) { results.push("⚠️ Hapus transaksi: tidak ada yang cocok."); break; }
+            const ids = new Set(toDel.map(t => t.id));
+            nd.transactions = nd.transactions.filter(t => !ids.has(t.id));
+            const masuk = toDel.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+            const keluar = toDel.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+            results.push(`✓ ${toDel.length} transaksi dihapus${mon ? ` (${mon})` : ""}${typ ? ` · ${typ === "income" ? "pemasukan" : "pengeluaran"}` : ""}. Total masuk ${fmt(masuk)}, keluar ${fmt(keluar)}.`);
+            break;
+          }
+          case "delete_note": {
+            if (a.all) { const n = nd.notes.length; nd.notes = []; results.push(`✓ ${n} catatan dihapus.`); break; }
+            const q = norm(a.content || a.text || a.fact || "");
+            const dateQ = a.date || null;
+            if (!q && !dateQ) { results.push("⚠️ Hapus catatan: sebutkan isi/tanggal atau set all:true."); break; }
+            const before = nd.notes.length;
+            nd.notes = nd.notes.filter(nt => !((dateQ ? nt.date === dateQ : true) && (q ? norm(nt.content).includes(q) : true)));
+            const removed = before - nd.notes.length;
+            results.push(removed ? `✓ ${removed} catatan dihapus.` : "⚠️ Hapus catatan: tidak ada yang cocok.");
+            break;
+          }
+          case "delete_receipts": {
+            const mon = a.month ? resolveMonth(a.month) : null;
+            if (a.month && !mon) { results.push(`⚠️ Hapus nota: bulan "${a.month}" tidak dikenali.`); break; }
+            const typ = a.type || null; // drop / cash / payment
+            const storeQ = a.storeName ? norm(a.storeName) : null;
+            const hasFilter = !!(mon || typ || storeQ);
+            if (!a.all && !hasFilter) { results.push("⚠️ Hapus nota: sebutkan kriteria atau set all:true."); break; }
+            const match = (r) => {
+              if (mon && !String(r.date).startsWith(mon)) return false;
+              if (typ && r.type !== typ) return false;
+              if (storeQ && !norm(r.storeName).includes(storeQ)) return false;
+              return true;
+            };
+            const toDel = nd.receipts.filter(match);
+            if (!toDel.length) { results.push("⚠️ Hapus nota: tidak ada yang cocok."); break; }
+            const ids = new Set(toDel.map(r => r.id));
+            nd.receipts = nd.receipts.filter(r => !ids.has(r.id));
+            results.push(`✓ ${toDel.length} nota dihapus${mon ? ` (${mon})` : ""}.`);
+            break;
           }
           case "remember": {
             const fact = String(a.fact || a.content || "").trim();
