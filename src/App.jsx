@@ -900,7 +900,7 @@ function Dashboard({ data, setPage }) {
         <StatCard label="Pengeluaran" value={fmtShort(monthExpense)} icon={<Icon name="trending-down" size={20} />} color="var(--red)" soft="var(--red-soft)" onClick={() => setPage("finance")} />
         <StatCard label="Laba Bersih" value={fmtShort(monthIncome - monthExpense)} icon={<Icon name="wallet" size={20} />} color="var(--amber)" soft="var(--amber-soft)" onClick={() => setPage("finance")} />
         <StatCard label="Toko Aktif" value={stores.length} icon={<Icon name="store" size={20} />} color="var(--blue)" soft="var(--blue-soft)" onClick={() => setPage("stores")} />
-        <StatCard label="Titipan Beredar" value={`${activeC.length} item`} icon={<Icon name="package" size={20} />} color="var(--brand-deep)" soft="var(--brand-soft)" onClick={() => setPage("stores")} />
+        <StatCard label="Titipan Beredar" value={`${activeC.length} item`} icon={<Icon name="package" size={20} />} color="var(--brand-deep)" soft="var(--brand-soft)" onClick={() => setPage("finance", { financeTab: "titipan" })} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 16, marginBottom: 16 }} className="dash-grid">
@@ -1073,9 +1073,10 @@ function MetricDetailModal({ metric, transactions, onClose }) {
 // ─────────────────────────────────────────────
 // FINANCE
 // ─────────────────────────────────────────────
-function Finance({ data, setData }) {
+function Finance({ data, setData, initialTab, onTabConsumed }) {
   const { transactions, consignments = [], products = [], stores = [], routes = [] } = data;
-  const [tab, setTab] = useState("ringkasan");
+  const [tab, setTab] = useState(initialTab || "ringkasan");
+  useEffect(() => { if (initialTab && onTabConsumed) onTabConsumed(); }, []);
   const [period, setPeriod] = useState("bulanan");
   const [showAdd, setShowAdd] = useState(false);
   const [typeFilter, setTypeFilter] = useState("all");
@@ -1171,7 +1172,8 @@ function Finance({ data, setData }) {
   const [showAsset, setShowAsset] = useState(false);
   const [editAssetId, setEditAssetId] = useState(null);
   const [assetForm, setAssetForm] = useState({ name: "", type: "kas", value: "", note: "" });
-  const assetCat = { kas: { label: "Kas & Bank", icon: "💵", color: "var(--green)" }, alat: { label: "Peralatan & Inventaris", icon: "🛠️", color: "var(--blue)" }, lainnya: { label: "Lainnya", icon: "📦", color: "var(--brand)" } };
+  const [detailView, setDetailView] = useState(null); // null | kas | alat | lainnya | piutang
+  const assetCat = { kas: { label: "Kas & Bank", icon: "banknote", color: "var(--green)" }, alat: { label: "Peralatan & Inventaris", icon: "settings", color: "var(--blue)" }, lainnya: { label: "Lainnya", icon: "coins", color: "var(--brand)" } };
   const openNewAsset = (type) => { setEditAssetId(null); setAssetForm({ name: "", type: type || "kas", value: "", note: "" }); setShowAsset(true); };
   const openEditAsset = (a) => { setEditAssetId(a.id); setAssetForm({ name: a.name, type: ["kas", "alat"].includes(a.type) ? a.type : "lainnya", value: String(a.value ?? ""), note: a.note || "" }); setShowAsset(true); };
   const saveAsset = () => {
@@ -1188,8 +1190,80 @@ function Finance({ data, setData }) {
   const lainTotal = assets.filter(a => !["kas", "alat"].includes(a.type)).reduce((s, a) => s + (a.value || 0), 0);
   const manualTotal = kasTotal + alatTotal + lainTotal;
   const piutangAset = consignments.filter(c => c.status === "active").reduce((s, c) => { const p = products.find(x => x.id === c.productId); return s + (p ? Math.max(0, (c.deposited || 0) - (c.remaining || 0)) * p.price : 0); }, 0);
+  const piutangByStore = stores.map(s => {
+    const owed = consignments.filter(c => c.storeId === s.id && c.status === "active").reduce((sum, c) => { const p = products.find(x => x.id === c.productId); return sum + (p ? Math.max(0, (c.deposited || 0) - (c.remaining || 0)) * p.price : 0); }, 0);
+    if (owed <= 0) return null;
+    return { id: s.id, name: s.name, route: routes.find(r => r.id === s.routeId), owed };
+  }).filter(Boolean).sort((a, b) => b.owed - a.owed);
   const nilaiTitipanAll = titipanRows.reduce((s, r) => s + r.value, 0);
   const totalAset = manualTotal + piutangAset + nilaiTitipanAll;
+
+  const titipanBody = (
+    <>
+      <div className="route-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", overflowY: "hidden", marginBottom: 16, paddingBottom: 6, WebkitOverflowScrolling: "touch", scrollbarWidth: "thin" }}>
+        <button onClick={() => setTitipanRoute(null)}
+          style={{ flexShrink: 0, padding: "9px 16px", borderRadius: 99, border: `1.5px solid ${!titipanRoute ? "var(--ink)" : "var(--line-strong)"}`, background: !titipanRoute ? "var(--ink)" : "var(--surface)", color: !titipanRoute ? "#fff" : "var(--ink-2)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font)", whiteSpace: "nowrap" }}>
+          Semua Rute
+        </button>
+        {[...routes].sort((a, b) => (b.days || []).includes(todayDay) - (a.days || []).includes(todayDay)).map(r => {
+          const active = titipanRoute === r.id;
+          const isTdy = (r.days || []).includes(todayDay);
+          return (
+            <button key={r.id} onClick={() => setTitipanRoute(r.id)}
+              style={{ flexShrink: 0, padding: "9px 15px", borderRadius: 99, border: `1.5px solid ${active ? r.color : "var(--line-strong)"}`, background: active ? r.color : "var(--surface)", color: active ? "#fff" : "var(--ink-2)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font)", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: active ? "#fff" : r.color, display: "inline-block", flexShrink: 0 }} />
+              {r.name}
+              {isTdy && <span style={{ fontSize: 10.5, background: active ? "rgba(255,255,255,0.25)" : "var(--green-soft)", color: active ? "#fff" : "var(--green)", padding: "1px 7px", borderRadius: 99, fontWeight: 800 }}>Hari Ini</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
+        <div style={{ background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", borderRadius: "var(--r)", padding: 18, color: "#fff", boxShadow: "0 10px 26px rgba(76,91,212,0.22)", gridColumn: "1 / -1" }}>
+          <p style={{ fontSize: 13, fontWeight: 600, opacity: 0.92, display: "flex", alignItems: "center", gap: 7 }}><Icon name="package" size={16} /> Total Nilai Barang Titipan {titipanRoute ? `· ${routeOf(titipanRoute)?.name || ""}` : "· Semua Toko"}</p>
+          <p className="tnum" style={{ fontSize: 30, fontWeight: 800, marginTop: 4, lineHeight: 1.1 }}>{fmt(titipanValue)}</p>
+          <p className="tnum" style={{ fontSize: 13, fontWeight: 600, opacity: 0.92, marginTop: 6 }}>{titipanQty} bungkus · {titipanStoreCount} toko · {titipanByProduct.length} jenis produk</p>
+        </div>
+      </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <p style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}><Icon name="package" size={18} /> Rincian per Produk</p>
+        {titipanByProduct.length === 0 ? (
+          <EmptyState icon="📭" title="Tidak ada titipan" sub={titipanRoute ? "Belum ada barang titipan di rute ini" : "Belum ada barang titipan di toko mana pun"} />
+        ) : titipanByProduct.map((p, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--line)", gap: 10 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ fontSize: 14.5, fontWeight: 700 }}>{p.name}</p>
+              <p className="tnum" style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500, marginTop: 2 }}>{p.qty} bks · @ {fmt(p.price)}</p>
+            </div>
+            <p className="tnum" style={{ fontSize: 15, fontWeight: 800, color: "var(--brand-deep)", whiteSpace: "nowrap" }}>{fmt(p.value)}</p>
+          </div>
+        ))}
+      </Card>
+
+      <Card>
+        <p style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}><Icon name="store" size={18} /> Rincian per Toko</p>
+        {titipanByStore.length === 0 ? (
+          <EmptyState icon="🏪" title="Tidak ada toko" sub="Belum ada toko dengan barang titipan" />
+        ) : titipanByStore.map((s, i) => {
+          const rt = routeOf(s.routeId);
+          return (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--line)", gap: 10 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                  <p style={{ fontSize: 14.5, fontWeight: 700 }}>{s.name}</p>
+                  {rt && <Tag color={rt.color}>{rt.name}</Tag>}
+                </div>
+                <p className="tnum" style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500, marginTop: 2 }}>{s.qty} bks · {s.items} jenis produk</p>
+              </div>
+              <p className="tnum" style={{ fontSize: 15, fontWeight: 800, color: "var(--brand-deep)", whiteSpace: "nowrap" }}>{fmt(s.value)}</p>
+            </div>
+          );
+        })}
+      </Card>
+    </>
+  );
 
   return (
     <div className="fade-up">
@@ -1356,69 +1430,7 @@ function Finance({ data, setData }) {
             <p style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 500, marginBottom: 14, lineHeight: 1.5 }}>
               Nilai & jumlah barang titip jual yang <b>masih ada di toko</b> (belum terjual). Modal yang sedang beredar.
             </p>
-
-            <div className="route-scroll" style={{ display:"flex", gap:8, overflowX:"auto", overflowY:"hidden", marginBottom:16, paddingBottom:6, WebkitOverflowScrolling:"touch", scrollbarWidth:"thin" }}>
-              <button onClick={() => setTitipanRoute(null)}
-                style={{ flexShrink:0, padding:"9px 16px", borderRadius:99, border:`1.5px solid ${!titipanRoute?"var(--ink)":"var(--line-strong)"}`, background:!titipanRoute?"var(--ink)":"var(--surface)", color:!titipanRoute?"#fff":"var(--ink-2)", fontWeight:700, fontSize:13.5, cursor:"pointer", fontFamily:"var(--font)", whiteSpace:"nowrap" }}>
-                Semua Rute
-              </button>
-              {[...routes].sort((a,b) => (b.days||[]).includes(todayDay) - (a.days||[]).includes(todayDay)).map(r => {
-                const active = titipanRoute === r.id;
-                const isTdy = (r.days||[]).includes(todayDay);
-                return (
-                  <button key={r.id} onClick={() => setTitipanRoute(r.id)}
-                    style={{ flexShrink:0, padding:"9px 15px", borderRadius:99, border:`1.5px solid ${active?r.color:"var(--line-strong)"}`, background:active?r.color:"var(--surface)", color:active?"#fff":"var(--ink-2)", fontWeight:700, fontSize:13.5, cursor:"pointer", fontFamily:"var(--font)", display:"inline-flex", alignItems:"center", gap:7, whiteSpace:"nowrap" }}>
-                    <span style={{width:8,height:8,borderRadius:"50%",background:active?"#fff":r.color,display:"inline-block",flexShrink:0}}/>
-                    {r.name}
-                    {isTdy && <span style={{fontSize:10.5,background:active?"rgba(255,255,255,0.25)":"var(--green-soft)",color:active?"#fff":"var(--green)",padding:"1px 7px",borderRadius:99,fontWeight:800}}>Hari Ini</span>}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
-              <div style={{ background: "linear-gradient(135deg, var(--brand), var(--brand-deep))", borderRadius: "var(--r)", padding: 18, color: "#fff", boxShadow: "0 10px 26px rgba(76,91,212,0.22)", gridColumn: "1 / -1" }}>
-                <p style={{ fontSize: 13, fontWeight: 600, opacity: 0.92 }}>📦 Total Nilai Barang Titipan {titipanRoute ? `· ${routeOf(titipanRoute)?.name || ""}` : "· Semua Toko"}</p>
-                <p className="tnum" style={{ fontSize: 30, fontWeight: 800, marginTop: 4, lineHeight: 1.1 }}>{fmt(titipanValue)}</p>
-                <p className="tnum" style={{ fontSize: 13, fontWeight: 600, opacity: 0.92, marginTop: 6 }}>{titipanQty} bungkus · {titipanStoreCount} toko · {titipanByProduct.length} jenis produk</p>
-              </div>
-            </div>
-
-            <Card style={{ marginBottom: 16 }}>
-              <p style={{ fontWeight: 800, fontSize: 15, marginBottom: 14 }}>🍟 Rincian per Produk</p>
-              {titipanByProduct.length === 0 ? (
-                <EmptyState icon="📭" title="Tidak ada titipan" sub={titipanRoute ? "Belum ada barang titipan di rute ini" : "Belum ada barang titipan di toko mana pun"} />
-              ) : titipanByProduct.map((p, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--line)", gap: 10 }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <p style={{ fontSize: 14.5, fontWeight: 700 }}>{p.name}</p>
-                    <p className="tnum" style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500, marginTop: 2 }}>{p.qty} bks · @ {fmt(p.price)}</p>
-                  </div>
-                  <p className="tnum" style={{ fontSize: 15, fontWeight: 800, color: "var(--brand-deep)", whiteSpace: "nowrap" }}>{fmt(p.value)}</p>
-                </div>
-              ))}
-            </Card>
-
-            <Card>
-              <p style={{ fontWeight: 800, fontSize: 15, marginBottom: 14 }}>🏪 Rincian per Toko</p>
-              {titipanByStore.length === 0 ? (
-                <EmptyState icon="🏪" title="Tidak ada toko" sub="Belum ada toko dengan barang titipan" />
-              ) : titipanByStore.map((s, i) => {
-                const rt = routeOf(s.routeId);
-                return (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--line)", gap: 10 }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                        <p style={{ fontSize: 14.5, fontWeight: 700 }}>{s.name}</p>
-                        {rt && <Tag color={rt.color}>{rt.name}</Tag>}
-                      </div>
-                      <p className="tnum" style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500, marginTop: 2 }}>{s.qty} bks · {s.items} jenis produk</p>
-                    </div>
-                    <p className="tnum" style={{ fontSize: 15, fontWeight: 800, color: "var(--brand-deep)", whiteSpace: "nowrap" }}>{fmt(s.value)}</p>
-                  </div>
-                );
-              })}
-            </Card>
+            {titipanBody}
           </div>
         )}
 
@@ -1436,57 +1448,120 @@ function Finance({ data, setData }) {
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 18 }}>
               {[
-                { label: "Kas & Bank", icon: "💵", val: kasTotal, color: "var(--green)" },
-                { label: "Peralatan", icon: "🛠️", val: alatTotal, color: "var(--blue)" },
-                { label: "Piutang (toko)", icon: "🧾", val: piutangAset, color: "var(--brand-deep)", auto: true },
-                { label: "Nilai Titipan", icon: "📦", val: nilaiTitipanAll, color: "var(--brand)", auto: true },
-                ...(lainTotal > 0 ? [{ label: "Lainnya", icon: "📦", val: lainTotal, color: "var(--ink-2)" }] : []),
-              ].map((c, i) => (
-                <div key={i} style={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 13, padding: 14 }}>
-                  <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>{c.icon} {c.label}{c.auto ? " ·auto" : ""}</p>
-                  <p className="tnum" style={{ fontSize: 18, fontWeight: 800, color: c.color, marginTop: 4 }}>{fmt(c.val)}</p>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
-              <p style={{ fontSize: 15, fontWeight: 800 }}>Daftar Aset</p>
-              <Btn size="sm" icon="+" onClick={() => openNewAsset("kas")}>Tambah Aset</Btn>
-            </div>
-
-            {assets.length === 0 ? (
-              <Card style={{ textAlign: "center", padding: "26px 16px" }}>
-                <div style={{ fontSize: 34, marginBottom: 8 }}>💎</div>
-                <p style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>Belum ada aset dicatat. Tambahkan kas, saldo bank, motor, etalase, dll.</p>
-                <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 6 }}>Piutang & nilai titipan sudah otomatis dihitung di atas.</p>
-              </Card>
-            ) : (
-              ["kas", "alat", "lainnya"].map(catKey => {
-                const items = assets.filter(a => catKey === "lainnya" ? !["kas", "alat"].includes(a.type) : a.type === catKey);
-                if (!items.length) return null;
-                const meta = assetCat[catKey];
+                { label: "Kas & Bank", icon: "banknote", val: kasTotal, color: "var(--green)", bg: "var(--green-soft)", view: "kas", onClick: () => setDetailView(v => v === "kas" ? null : "kas") },
+                { label: "Peralatan", icon: "settings", val: alatTotal, color: "var(--blue)", bg: "var(--blue-soft)", view: "alat", onClick: () => setDetailView(v => v === "alat" ? null : "alat") },
+                { label: "Piutang (toko)", icon: "receipt", val: piutangAset, color: "var(--brand-deep)", bg: "var(--brand-soft)", auto: true, view: "piutang", onClick: () => setDetailView(v => v === "piutang" ? null : "piutang") },
+                { label: "Nilai Titipan", icon: "package", val: nilaiTitipanAll, color: "var(--brand)", bg: "var(--brand-soft)", auto: true, view: "titipan", onClick: () => setDetailView(v => v === "titipan" ? null : "titipan") },
+                ...(lainTotal > 0 ? [{ label: "Lainnya", icon: "coins", val: lainTotal, color: "var(--ink-2)", bg: "var(--bg-2)", view: "lainnya", onClick: () => setDetailView(v => v === "lainnya" ? null : "lainnya") }] : []),
+              ].map((c, i) => {
+                const clickable = !!c.onClick;
+                const selected = c.view && detailView === c.view;
+                const Comp = clickable ? "button" : "div";
                 return (
-                  <div key={catKey} style={{ marginBottom: 16 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <p style={{ fontSize: 12.5, fontWeight: 800, color: "var(--muted)" }}>{meta.icon} {meta.label}</p>
-                      <p className="tnum" style={{ fontSize: 12.5, fontWeight: 800, color: meta.color }}>{fmt(items.reduce((s, a) => s + (a.value || 0), 0))}</p>
+                  <Comp key={i} onClick={c.onClick}
+                    style={{ textAlign: "left", fontFamily: "var(--font)", width: "100%", background: selected ? c.bg : "var(--surface)", border: `1.5px solid ${selected ? c.color : "var(--line)"}`, borderRadius: 14, padding: 14, cursor: clickable ? "pointer" : "default", transition: "all .16s", boxShadow: selected ? "var(--shadow-sm)" : "none" }}
+                    onMouseEnter={clickable ? (e) => { if (!selected) { e.currentTarget.style.borderColor = c.color; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; } } : undefined}
+                    onMouseLeave={clickable ? (e) => { if (!selected) { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.boxShadow = "none"; } } : undefined}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9, gap: 6 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        <span style={{ width: 30, height: 30, borderRadius: 9, background: c.bg, color: c.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name={c.icon} size={16} /></span>
+                        <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}{c.auto ? " ·auto" : ""}</span>
+                      </span>
+                      {clickable && <span style={{ color: c.color, fontSize: 15, fontWeight: 800, flexShrink: 0, transform: selected ? "rotate(90deg)" : "none", transition: "transform .16s", display: "inline-block" }}>→</span>}
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {items.map(a => (
-                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 11, padding: "11px 13px" }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", wordBreak: "break-word" }}>{a.name}</p>
-                            {a.note && <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>{a.note}</p>}
-                          </div>
-                          <p className="tnum" style={{ fontSize: 15, fontWeight: 800, color: meta.color, whiteSpace: "nowrap" }}>{fmt(a.value)}</p>
-                          <button onClick={() => openEditAsset(a)} title="Edit" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", cursor: "pointer", fontSize: 13 }}>✏️</button>
-                          <button onClick={() => askDeleteAsset(a)} title="Hapus" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--red)", cursor: "pointer", fontSize: 13 }}>🗑</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                    <p className="tnum" style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{fmt(c.val)}</p>
+                  </Comp>
                 );
-              })
+              })}
+            </div>
+
+            {detailView === "titipan" ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 8 }}>
+                  <p style={{ fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Icon name="package" size={18} /> Rincian Nilai Titipan</p>
+                  <Btn size="sm" variant="ghost" onClick={() => setDetailView(null)}>← Semua aset</Btn>
+                </div>
+                {titipanBody}
+              </>
+            ) : detailView === "piutang" ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
+                  <p style={{ fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Icon name="receipt" size={18} /> Rincian Piutang per Toko</p>
+                  <Btn size="sm" variant="ghost" onClick={() => setDetailView(null)}>← Semua aset</Btn>
+                </div>
+                {piutangByStore.length === 0 ? (
+                  <Card style={{ textAlign: "center", padding: "24px 16px" }}>
+                    <p style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>Tidak ada piutang. Semua barang yang sudah laku telah tertagih 🎉</p>
+                  </Card>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {piutangByStore.map(s => (
+                      <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "12px 14px" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 14.5, fontWeight: 700, wordBreak: "break-word" }}>{s.name}</p>
+                          {s.route && <div style={{ marginTop: 3 }}><Tag color={s.route.color}>{s.route.name}</Tag></div>}
+                        </div>
+                        <p className="tnum" style={{ fontSize: 15.5, fontWeight: 800, color: "var(--brand-deep)", whiteSpace: "nowrap" }}>{fmt(s.owed)}</p>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", background: "var(--brand-soft)", borderRadius: 12, marginTop: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "var(--brand-deep)" }}>Total Piutang</span>
+                      <span className="tnum" style={{ fontSize: 16, fontWeight: 800, color: "var(--brand-deep)" }}>{fmt(piutangAset)}</span>
+                    </div>
+                    <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 4, lineHeight: 1.5 }}>Piutang = barang yang sudah laku tapi belum ditagih. Lakukan "Kunjungi & Catat" / tagih di toko untuk melunasi.</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
+                  <p style={{ fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+                    {detailView && <Icon name={assetCat[detailView].icon} size={17} />}{detailView ? `Rincian ${assetCat[detailView].label}` : "Daftar Aset"}
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {detailView && <Btn size="sm" variant="ghost" onClick={() => setDetailView(null)}>← Semua</Btn>}
+                    <Btn size="sm" icon="+" onClick={() => openNewAsset(detailView || "kas")}>Tambah</Btn>
+                  </div>
+                </div>
+                {(() => {
+                  const cats = detailView ? [detailView] : ["kas", "alat", "lainnya"];
+                  const visible = cats.filter(catKey => assets.some(a => catKey === "lainnya" ? !["kas", "alat"].includes(a.type) : a.type === catKey));
+                  if (!visible.length) {
+                    return (
+                      <Card style={{ textAlign: "center", padding: "26px 16px" }}>
+                        <div style={{ width: 56, height: 56, borderRadius: 16, background: "var(--brand-soft)", color: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}><Icon name={detailView ? assetCat[detailView].icon : "gem"} size={28} /></div>
+                        <p style={{ fontSize: 13.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>{detailView ? `Belum ada ${assetCat[detailView].label.toLowerCase()}. Ketuk "Tambah" untuk menambah.` : "Belum ada aset dicatat. Tambahkan kas, saldo bank, motor, etalase, dll."}</p>
+                        {!detailView && <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 6 }}>Piutang & nilai titipan sudah otomatis dihitung di atas.</p>}
+                      </Card>
+                    );
+                  }
+                  return visible.map(catKey => {
+                    const items = assets.filter(a => catKey === "lainnya" ? !["kas", "alat"].includes(a.type) : a.type === catKey);
+                    const meta = assetCat[catKey];
+                    return (
+                      <div key={catKey} style={{ marginBottom: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                          <p style={{ fontSize: 12.5, fontWeight: 800, color: "var(--muted)", display: "flex", alignItems: "center", gap: 7 }}><Icon name={meta.icon} size={15} /> {meta.label}</p>
+                          <p className="tnum" style={{ fontSize: 12.5, fontWeight: 800, color: meta.color }}>{fmt(items.reduce((s, a) => s + (a.value || 0), 0))}</p>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {items.map(a => (
+                            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 11, padding: "11px 13px" }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", wordBreak: "break-word" }}>{a.name}</p>
+                                {a.note && <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginTop: 1 }}>{a.note}</p>}
+                              </div>
+                              <p className="tnum" style={{ fontSize: 15, fontWeight: 800, color: meta.color, whiteSpace: "nowrap" }}>{fmt(a.value)}</p>
+                              <button onClick={() => openEditAsset(a)} title="Edit" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="pencil" size={14} /></button>
+                              <button onClick={() => askDeleteAsset(a)} title="Hapus" style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--red)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="trash" size={14} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </>
             )}
 
             <Card style={{ background: "var(--bg-2)", marginTop: 4 }}>
@@ -3600,10 +3675,12 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [selectedStoreId, setSelectedStoreId] = useState(null);
   const [showMore, setShowMore] = useState(false);
+  const [financeTab, setFinanceTab] = useState(null);
 
-  const navigate = (p) => {
+  const navigate = (p, opts) => {
     setPage(p);
     if (p !== "stores") setSelectedStoreId(null);
+    if (opts && opts.financeTab) setFinanceTab(opts.financeTab);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -3611,7 +3688,7 @@ export default function App() {
     const props = { data, setData, setPage: navigate };
     switch (page) {
       case "dashboard": return <Dashboard {...props} />;
-      case "finance": return <Finance {...props} />;
+      case "finance": return <Finance {...props} initialTab={financeTab} onTabConsumed={() => setFinanceTab(null)} />;
       case "stores": return <Stores {...props} selectedStoreId={selectedStoreId} setSelectedStoreId={setSelectedStoreId} />;
       case "receipts": return <Receipts {...props} />;
       case "notes": return <Notes {...props} />;
