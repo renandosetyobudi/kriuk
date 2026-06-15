@@ -102,6 +102,13 @@ const ICONS = {
   trash: <><path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M6 6v14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6"/><path d="M10 11v6"/><path d="M14 11v6"/></>,
   pencil: <><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></>,
   banknote: <><rect x="2" y="6" width="20" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01"/><path d="M18 12h.01"/></>,
+  camera: <><path d="M14.5 4h-5L7.2 6.8A2 2 0 0 1 5.6 7.6H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9.6a2 2 0 0 0-2-2h-1.6a2 2 0 0 1-1.6-.8Z"/><circle cx="12" cy="13" r="3.5"/></>,
+  image: <><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="m21 15-4.2-4.2a2 2 0 0 0-2.8 0L4 21"/></>,
+  x: <><path d="M18 6 6 18"/><path d="M6 6l12 12"/></>,
+  "map-pin": <><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.3"/></>,
+  navigation: <><path d="M3 11 22 2l-9 19-2.2-7.2L3 11Z"/></>,
+  phone: <><path d="M5 4h3.2l1.8 4.5-2.3 1.4a11 11 0 0 0 5 5l1.4-2.3 4.5 1.8V19a2 2 0 0 1-2.2 2A16 16 0 0 1 3 6.2 2 2 0 0 1 5 4Z"/></>,
+  check: <><path d="M20 6 9 17l-5-5"/></>,
 };
 function Icon({ name, size = 20, stroke = 2, style }) {
   const paths = ICONS[name];
@@ -111,6 +118,31 @@ function Icon({ name, size = 20, stroke = 2, style }) {
       {paths}
     </svg>
   );
+}
+
+// Resize + compress an image File to a small JPEG dataURL (keeps localStorage light)
+function resizeImageFile(file, maxDim = 1280, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else if (h >= w && h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL("image/jpeg", quality)); } catch (err) { reject(err); }
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -626,10 +658,10 @@ function Tabs({ items, active, onChange }) {
 
 function EmptyState({ icon, title, sub }) {
   return (
-    <div style={{ textAlign: "center", padding: "44px 20px" }}>
-      <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.85 }}>{icon}</div>
-      <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 6, color: "var(--ink)" }}>{title}</p>
-      <p style={{ fontSize: 14, color: "var(--muted)", fontWeight: 500, maxWidth: 320, margin: "0 auto", lineHeight: 1.5 }}>{sub}</p>
+    <div style={{ textAlign: "center", padding: sub ? "40px 20px" : "30px 20px" }}>
+      <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.85, display: "flex", justifyContent: "center" }}>{icon}</div>
+      <p style={{ fontSize: 15.5, fontWeight: 700, marginBottom: sub ? 6 : 0, color: "var(--ink)" }}>{title}</p>
+      {sub && <p style={{ fontSize: 14, color: "var(--muted)", fontWeight: 500, maxWidth: 320, margin: "0 auto", lineHeight: 1.5 }}>{sub}</p>}
     </div>
   );
 }
@@ -1647,6 +1679,37 @@ function StoreDetail({ store, data, setData, onBack }) {
   const saveNote = () => { setData(d => ({ ...d, stores: d.stores.map(s => s.id === store.id ? { ...s, note: noteDraft.trim() } : s) })); setEditingNote(false); };
   const { confirm, Dialog } = useConfirm();
 
+  // ── Photo gallery ──
+  const photos = store.photos || [];
+  const camRef = useRef(null);
+  const fileRef = useRef(null);
+  const [photoView, setPhotoView] = useState(null);
+  const [photoFilter, setPhotoFilter] = useState("all");
+  const [busyPhoto, setBusyPhoto] = useState(false);
+  const [capDraft, setCapDraft] = useState("");
+  const PHOTO_LABELS = { stok: { label: "Stok", color: "var(--brand)" }, toko: { label: "Toko", color: "var(--green)" }, lainnya: { label: "Lainnya", color: "var(--muted)" } };
+  useEffect(() => { const p = (store.photos || []).find(x => x.id === photoView); setCapDraft(p ? (p.caption || "") : ""); }, [photoView]);
+  const writePhotos = (nextPhotos) => {
+    const candidate = { ...data, stores: data.stores.map(s => s.id === store.id ? { ...s, photos: nextPhotos } : s) };
+    try { localStorage.setItem("kriuk_v6", JSON.stringify(candidate)); }
+    catch (e) { alert("Penyimpanan penuh — foto tidak dapat disimpan. Hapus beberapa foto lama lalu coba lagi."); return false; }
+    setData(d => ({ ...d, stores: d.stores.map(s => s.id === store.id ? { ...s, photos: nextPhotos } : s) }));
+    return true;
+  };
+  const addPhotoFiles = async (fileList) => {
+    if (busyPhoto) return;
+    const files = Array.from(fileList || []).filter(f => f.type && f.type.startsWith("image/"));
+    if (!files.length) return;
+    setBusyPhoto(true);
+    try {
+      const added = [];
+      for (const f of files) { try { const src = await resizeImageFile(f); added.push({ id: uid(), src, label: "lainnya", caption: "", ts: Date.now() }); } catch (e) {} }
+      if (added.length) { const ok = writePhotos([...added, ...(store.photos || [])]); if (ok && added.length === 1) setPhotoView(added[0].id); }
+    } finally { setBusyPhoto(false); }
+  };
+  const patchPhoto = (id, patch) => writePhotos((store.photos || []).map(p => p.id === id ? { ...p, ...patch } : p));
+  const deletePhoto = (id) => { writePhotos((store.photos || []).filter(p => p.id !== id)); setPhotoView(null); };
+
   const tagihan = sc.reduce((sum,c) => { const p = products.find(x => x.id === c.productId); return sum + (p ? (c.deposited - c.remaining) * p.price : 0); }, 0);
   const totalRemaining = sc.reduce((s,c) => s + c.remaining, 0);
 
@@ -1782,112 +1845,64 @@ function StoreDetail({ store, data, setData, onBack }) {
         ← Kembali ke daftar toko
       </button>
 
-      <Card style={{ marginBottom:16, background: "linear-gradient(135deg, var(--surface), var(--bg))" }}>
-        <div style={{ display:"flex", alignItems:"flex-start", gap:14, marginBottom:14 }}>
-          <div style={{ width:62, height:62, borderRadius:16, background:(route?.color||"#E07B1A")+"1e", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, flexShrink:0, border:`1.5px solid ${(route?.color||"#E07B1A")}30` }}>🏪</div>
-          <div style={{ minWidth:0, flex:1 }}>
-            <h2 style={{ fontSize:21, fontWeight:800, color:"var(--ink)", marginBottom:3, wordBreak:"break-word" }}>{store.name}</h2>
-            <p style={{ fontSize:13.5, color:"var(--muted)", wordBreak:"break-word", fontWeight:500 }}>📍 {store.address}</p>
-            {store.contact && <p style={{ fontSize:13, color:"var(--muted)", marginTop:2, fontWeight:500 }}>📱 {store.contact}</p>}
-            <div style={{ display:"flex", gap:6, marginTop:9, flexWrap:"wrap" }}>
-              {route && <Tag color={route.color}>{route.name}</Tag>}
-              {totalRemaining > 0 && <Tag color="var(--brand)">{totalRemaining} bks di toko</Tag>}
-            </div>
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 13 }}>
+          <div style={{ width: 54, height: 54, borderRadius: 15, background: (route?.color || "var(--brand)") + "1e", color: route?.color || "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: `1.5px solid ${(route?.color || "var(--brand)")}30` }}><Icon name="store" size={26} /></div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h2 style={{ fontSize: 19, fontWeight: 800, color: "var(--ink)", marginBottom: 4, wordBreak: "break-word", lineHeight: 1.2 }}>{store.name}</h2>
+            <p style={{ fontSize: 13, color: "var(--muted)", wordBreak: "break-word", fontWeight: 500, display: "flex", alignItems: "flex-start", gap: 5 }}><Icon name="map-pin" size={14} style={{ marginTop: 2, flexShrink: 0 }} /> {store.address}</p>
+            {store.contact && <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3, fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}><Icon name="phone" size={13} /> {store.contact}</p>}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button onClick={() => { setEditForm({ name: store.name, address: store.address, contact: store.contact, routeId: store.routeId, lat: store.lat, lng: store.lng }); setShowEdit(true); }} title="Edit info" style={{ width: 34, height: 34, borderRadius: 9, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="pencil" size={15} /></button>
+            <button onClick={askDelStore} title="Hapus toko" style={{ width: 34, height: 34, borderRadius: 9, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--red)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="trash" size={15} /></button>
           </div>
         </div>
 
-        <div style={{ display:"flex", gap:8, marginBottom:12, paddingBottom:12, borderBottom:"1px solid var(--line)", flexWrap:"wrap" }}>
-          <Btn variant="ghost" size="sm" icon="✏️" onClick={() => { setEditForm({ name: store.name, address: store.address, contact: store.contact, routeId: store.routeId, lat: store.lat, lng: store.lng }); setShowEdit(true); }}>Edit Info</Btn>
-          <Btn variant="danger" size="sm" icon="🗑" onClick={askDelStore}>Hapus Toko</Btn>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
+          {route && <Tag color={route.color}>{route.name}</Tag>}
+          {tagihan > 0 && <Tag color="var(--amber)">Tagihan {fmt(tagihan)}</Tag>}
+          <Tag color="var(--brand)">{totalRemaining} bks</Tag>
+          {nextVisit != null && nextVisit <= 2 && <Tag color="var(--brand-deep)">Kunjungan {whenLabel(nextVisit)}</Tag>}
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns: sc.length > 0 ? "1fr 1fr" : "1fr", gap:10, marginBottom:10 }}>
-          <Btn full size="lg" icon="📦" onClick={() => setShowDrop(true)}>Drop Barang</Btn>
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 9 }}>
           {sc.length > 0 && (
-            <Btn full size="lg" variant={tagihan > 0 ? "primary" : "outline"} icon="🤝" onClick={openVisit}>
-              {tagihan > 0 ? `Tagih (${fmt(tagihan)})` : "Kunjungi & Catat"}
+            <Btn full size="lg" variant={tagihan > 0 ? "primary" : "outline"} icon={<Icon name={tagihan > 0 ? "banknote" : "check"} size={18} />} onClick={openVisit}>
+              {tagihan > 0 ? `Tagih · ${fmt(tagihan)}` : "Kunjungi & Catat"}
             </Btn>
           )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+            <Btn full size="lg" icon={<Icon name="package" size={18} />} onClick={() => setShowDrop(true)}>Drop</Btn>
+            <Btn full size="lg" variant="success" icon={<Icon name="coins" size={18} />} onClick={() => setShowCash(true)}>Jual Tunai</Btn>
+          </div>
         </div>
-        <Btn full size="lg" variant="success" icon="💵" onClick={() => setShowCash(true)}>Jual Tunai (Bayar Cash)</Btn>
       </Card>
 
-      <Card style={{ marginBottom:16 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: (editingNote || store.note) ? 10 : 0, gap:8 }}>
-          <p style={{ fontSize:14.5, fontWeight:800 }}>📝 Catatan & Pengingat Toko</p>
-          {!editingNote && <Btn variant="ghost" size="sm" icon={store.note ? "✏️" : "+"} onClick={() => { setNoteDraft(store.note || ""); setEditingNote(true); }}>{store.note ? "Ubah" : "Tambah"}</Btn>}
-        </div>
-        {editingNote ? (
-          <div>
-            <textarea rows={3} value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder="mis. Tagih pembayaran bulan lalu · bawa stok extra Kriuk · pemilik minta dikabari sebelum datang" style={{ width:"100%", resize:"vertical" }} />
-            <div style={{ display:"flex", gap:8, marginTop:10 }}>
-              <Btn variant="ghost" size="sm" onClick={() => setEditingNote(false)}>Batal</Btn>
-              <Btn size="sm" icon="✓" onClick={saveNote}>Simpan</Btn>
-            </div>
-          </div>
-        ) : store.note ? (
-          <p style={{ fontSize:13.5, color:"var(--ink-2)", whiteSpace:"pre-wrap", lineHeight:1.55, fontWeight:500, background:"var(--amber-soft)", border:"1.5px solid var(--line)", borderRadius:10, padding:"10px 12px" }}>{store.note}</p>
-        ) : (
-          <p style={{ fontSize:13, color:"var(--muted)", fontWeight:500 }}>Belum ada catatan. Tambahkan pengingat yang akan muncul di 🔔 saat mendekati hari kunjungan.</p>
-        )}
-        {nextVisit != null && (
-          <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:8, fontSize:12.5, fontWeight:700, color: nextVisit <= 2 ? "var(--brand-deep)" : "var(--muted)", background: nextVisit <= 2 ? "var(--brand-soft)" : "var(--bg)", border:"1.5px solid var(--line)", borderRadius:9, padding:"8px 11px" }}>
-            🔔 Kunjungan {route?.name}: {whenLabel(nextVisit)}{nextVisit <= 2 ? " — pengingat aktif" : ""}
-          </div>
-        )}
-      </Card>
-
-      <Card style={{ marginBottom:16 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:8 }}>
-          <p style={{ fontWeight:800, fontSize:15 }}>🗺️ Lokasi & Peta</p>
-          {hasCoords(store) && <Btn size="sm" variant="ghost" icon="✏️" onClick={() => { setEditForm({ name: store.name, address: store.address, contact: store.contact, routeId: store.routeId, lat: store.lat, lng: store.lng }); setShowEdit(true); }}>Ubah Lokasi</Btn>}
-        </div>
-        {hasCoords(store) ? (
-          <>
-            <div style={{ borderRadius:13, overflow:"hidden", border:"1.5px solid var(--line)", marginBottom:12, lineHeight:0 }}>
-              <iframe title="Peta lokasi toko" src={mapsEmbedUrl(store.lat, store.lng)} width="100%" height="220" style={{ border:0, display:"block" }} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
-            </div>
-            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-              <div style={{ flex:1, minWidth:140 }}><Btn full icon="🧭" onClick={() => window.open(mapsDirUrl(store), "_blank")}>Rute ke Sini</Btn></div>
-              <div style={{ flex:1, minWidth:140 }}><Btn full variant="outline" icon="📍" onClick={() => window.open(mapsSearchUrl(store), "_blank")}>Buka di Google Maps</Btn></div>
-            </div>
-          </>
-        ) : (
-          <div style={{ textAlign:"center", padding:"18px 14px", background:"var(--bg)", borderRadius:13, border:"1.5px dashed var(--line-strong)" }}>
-            <p style={{ fontSize:30, marginBottom:8 }}>📍</p>
-            <p style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>Lokasi belum diatur</p>
-            <p style={{ fontSize:13, color:"var(--muted)", fontWeight:500, marginBottom:14, lineHeight:1.5 }}>Setel titik lokasi toko agar bisa diurutkan berdasarkan jarak terdekat & dibuatkan rute.</p>
-            <Btn icon="📍" onClick={() => { setEditForm({ name: store.name, address: store.address, contact: store.contact, routeId: store.routeId, lat: store.lat, lng: store.lng }); setShowEdit(true); }}>Atur Lokasi Toko</Btn>
-          </div>
-        )}
-      </Card>
-
-      <Card style={{ marginBottom:16 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:8 }}>
-          <p style={{ fontWeight:800, fontSize:15 }}>📦 Stok di Toko ({sc.length} jenis)</p>
-        </div>
+      <Card style={{ marginBottom: 14 }}>
+        <p style={{ fontWeight: 800, fontSize: 15, marginBottom: sc.length ? 14 : 0, display: "flex", alignItems: "center", gap: 8 }}><Icon name="package" size={18} /> Stok di Toko {sc.length > 0 && <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 700 }}>({sc.length} jenis)</span>}</p>
         {sc.length === 0 ? (
-          <EmptyState icon="📭" title="Belum ada titipan" sub="Ketuk 'Drop Barang' di atas untuk mulai menitipkan" />
+          <EmptyState icon={<Icon name="package" size={34} style={{ color: "var(--line-strong)" }} />} title="Belum ada titipan" />
         ) : (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(240px, 1fr))", gap:10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
             {sc.map(c => {
               const p = products.find(x => x.id === c.productId);
               const stockValue = p ? c.remaining * p.price : 0;
               return (
-                <div key={c.id} style={{ background:"var(--bg)", borderRadius:13, padding:"14px", border:"1.5px solid var(--line)" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12, gap:8 }}>
-                    <p style={{ fontWeight:800, fontSize:14.5, flex:1 }}>{p?.name}</p>
+                <div key={c.id} style={{ background: "var(--bg)", borderRadius: 13, padding: 14, border: "1.5px solid var(--line)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 8 }}>
+                    <p style={{ fontWeight: 800, fontSize: 14.5, flex: 1 }}>{p?.name}</p>
                     <Tag color="var(--brand)">{p ? fmt(p.price) : "-"}</Tag>
                   </div>
-                  <div style={{ background:"var(--surface)", borderRadius:11, padding:"14px 12px", textAlign:"center", border:"1.5px solid var(--line)", marginBottom:10 }}>
-                    <p className="tnum" style={{ fontSize:32, fontWeight:800, color:"var(--brand)", lineHeight:1 }}>{c.remaining}</p>
-                    <p style={{ fontSize:11, color:"var(--muted)", fontWeight:700, marginTop:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>bks di toko</p>
+                  <div style={{ background: "var(--surface)", borderRadius: 11, padding: "14px 12px", textAlign: "center", border: "1.5px solid var(--line)", marginBottom: 10 }}>
+                    <p className="tnum" style={{ fontSize: 32, fontWeight: 800, color: "var(--brand)", lineHeight: 1 }}>{c.remaining}</p>
+                    <p style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>bks di toko</p>
                   </div>
-                  <div className="tnum" style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"var(--muted)", fontWeight:500, marginBottom:10 }}>
-                    <span>Nilai: <b style={{color:"var(--ink)"}}>{fmt(stockValue)}</b></span>
-                    <span>Drop: <b style={{color:"var(--ink)"}}>{fmtDate(c.date)}</b></span>
+                  <div className="tnum" style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--muted)", fontWeight: 500, marginBottom: 10 }}>
+                    <span>Nilai: <b style={{ color: "var(--ink)" }}>{fmt(stockValue)}</b></span>
+                    <span>Drop: <b style={{ color: "var(--ink)" }}>{fmtDate(c.date)}</b></span>
                   </div>
-                  <Btn full size="sm" variant="ghost" icon="✏️" onClick={() => setEditStock({ id: c.id, name: p?.name || "Produk", qty: String(c.remaining) })}>Ubah Stok</Btn>
+                  <Btn full size="sm" variant="ghost" icon={<Icon name="pencil" size={14} />} onClick={() => setEditStock({ id: c.id, name: p?.name || "Produk", qty: String(c.remaining) })}>Ubah Stok</Btn>
                 </div>
               );
             })}
@@ -1895,34 +1910,142 @@ function StoreDetail({ store, data, setData, onBack }) {
         )}
       </Card>
 
-      <Card>
-        <p style={{ fontWeight:800, fontSize:15, marginBottom:14 }}>🧾 Riwayat Nota ({storeReceipts.length})</p>
-        {storeReceipts.length === 0 ? (
-          <EmptyState icon="📄" title="Belum ada nota" sub="Nota otomatis dibuat saat drop & tagih" />
+      <Card style={{ marginBottom: 14 }}>
+        <p style={{ fontSize: 14.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}><Icon name="image" size={18} /> Galeri Foto {photos.length > 0 && <span style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 700 }}>({photos.length})</span>}</p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="outline" full disabled={busyPhoto} icon={<Icon name="camera" size={16} />} onClick={() => { if (camRef.current) camRef.current.click(); }}>{busyPhoto ? "Memproses…" : "Kamera"}</Btn>
+          <Btn variant="outline" full disabled={busyPhoto} icon={<Icon name="image" size={16} />} onClick={() => { if (fileRef.current) fileRef.current.click(); }}>Galeri / File</Btn>
+        </div>
+        <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => { addPhotoFiles(e.target.files); e.target.value = ""; }} />
+        <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => { addPhotoFiles(e.target.files); e.target.value = ""; }} />
+        {photos.length > 0 && (
+          <>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", margin: "14px 0 12px" }}>
+              {[["all", "Semua"], ["stok", "Stok"], ["toko", "Toko"], ["lainnya", "Lainnya"]].map(([k, lab]) => {
+                const cnt = k === "all" ? photos.length : photos.filter(p => (p.label || "lainnya") === k).length;
+                if (k !== "all" && cnt === 0) return null;
+                const on = photoFilter === k;
+                return <button key={k} onClick={() => setPhotoFilter(k)} style={{ padding: "6px 13px", borderRadius: 999, border: `1.5px solid ${on ? "var(--ink)" : "var(--line-strong)"}`, background: on ? "var(--ink)" : "var(--surface)", color: on ? "#fff" : "var(--ink-2)", fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--font)" }}>{lab}{k !== "all" ? ` (${cnt})` : ""}</button>;
+              })}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {photos.filter(p => photoFilter === "all" || (p.label || "lainnya") === photoFilter).map(p => {
+                const meta = PHOTO_LABELS[p.label || "lainnya"];
+                return (
+                  <button key={p.id} onClick={() => setPhotoView(p.id)} style={{ position: "relative", aspectRatio: "1 / 1", borderRadius: 12, overflow: "hidden", border: "1.5px solid var(--line)", padding: 0, cursor: "pointer", background: "var(--bg-2)" }}>
+                    <img src={p.src} alt={p.caption || "Foto toko"} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    <span style={{ position: "absolute", left: 6, bottom: 6, fontSize: 9.5, fontWeight: 800, color: "#fff", background: meta.color, padding: "2px 7px", borderRadius: 99, boxShadow: "0 1px 4px rgba(0,0,0,0.35)" }}>{meta.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Card>
+
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (editingNote || store.note || nextVisit != null) ? 10 : 0, gap: 8 }}>
+          <p style={{ fontSize: 14.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><Icon name="note" size={18} /> Catatan & Pengingat</p>
+          {!editingNote && <Btn variant="ghost" size="sm" icon={store.note ? <Icon name="pencil" size={14} /> : "+"} onClick={() => { setNoteDraft(store.note || ""); setEditingNote(true); }}>{store.note ? "Ubah" : "Tambah"}</Btn>}
+        </div>
+        {editingNote ? (
+          <div>
+            <textarea rows={3} value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder="mis. Tagih bulan lalu · bawa stok extra · kabari pemilik sebelum datang" style={{ width: "100%", resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <Btn variant="ghost" size="sm" onClick={() => setEditingNote(false)}>Batal</Btn>
+              <Btn size="sm" icon={<Icon name="check" size={14} />} onClick={saveNote}>Simpan</Btn>
+            </div>
+          </div>
+        ) : store.note ? (
+          <p style={{ fontSize: 13.5, color: "var(--ink-2)", whiteSpace: "pre-wrap", lineHeight: 1.55, fontWeight: 500, background: "var(--amber-soft)", border: "1.5px solid var(--line)", borderRadius: 10, padding: "10px 12px" }}>{store.note}</p>
+        ) : null}
+        {!editingNote && nextVisit != null && (
+          <div style={{ marginTop: store.note ? 12 : 0, display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: nextVisit <= 2 ? "var(--brand-deep)" : "var(--muted)", background: nextVisit <= 2 ? "var(--brand-soft)" : "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 9, padding: "8px 11px" }}>
+            <Icon name="bell" size={14} /> Kunjungan {route?.name}: {whenLabel(nextVisit)}
+          </div>
+        )}
+      </Card>
+
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+          <p style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}><Icon name="map-pin" size={18} /> Lokasi & Peta</p>
+          {hasCoords(store) && <Btn size="sm" variant="ghost" icon={<Icon name="pencil" size={14} />} onClick={() => { setEditForm({ name: store.name, address: store.address, contact: store.contact, routeId: store.routeId, lat: store.lat, lng: store.lng }); setShowEdit(true); }}>Ubah</Btn>}
+        </div>
+        {hasCoords(store) ? (
+          <>
+            <div style={{ borderRadius: 13, overflow: "hidden", border: "1.5px solid var(--line)", marginBottom: 12, lineHeight: 0 }}>
+              <iframe title="Peta lokasi toko" src={mapsEmbedUrl(store.lat, store.lng)} width="100%" height="200" style={{ border: 0, display: "block" }} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 140 }}><Btn full icon={<Icon name="navigation" size={16} />} onClick={() => window.open(mapsDirUrl(store), "_blank")}>Rute ke Sini</Btn></div>
+              <div style={{ flex: 1, minWidth: 140 }}><Btn full variant="outline" icon={<Icon name="map-pin" size={16} />} onClick={() => window.open(mapsSearchUrl(store), "_blank")}>Buka di Maps</Btn></div>
+            </div>
+          </>
         ) : (
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {storeReceipts.map(r => { const m = notaMeta(r.type); return (
-              <div key={r.id} style={{ background:"var(--bg)", borderRadius:13, padding:"12px 14px", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", border:"1.5px solid var(--line)" }}>
-                <div style={{ width:42, height:42, borderRadius:11, background: m.soft, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
-                  {m.icon}
-                </div>
-                <div style={{ flex:1, minWidth:140 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+          <div style={{ textAlign: "center", padding: "20px 14px", background: "var(--bg)", borderRadius: 13, border: "1.5px dashed var(--line-strong)" }}>
+            <div style={{ color: "var(--line-strong)", display: "flex", justifyContent: "center", marginBottom: 10 }}><Icon name="map-pin" size={30} /></div>
+            <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Lokasi belum diatur</p>
+            <Btn icon={<Icon name="map-pin" size={16} />} onClick={() => { setEditForm({ name: store.name, address: store.address, contact: store.contact, routeId: store.routeId, lat: store.lat, lng: store.lng }); setShowEdit(true); }}>Atur Lokasi</Btn>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <p style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}><Icon name="receipt" size={18} /> Riwayat Nota {storeReceipts.length > 0 && <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 700 }}>({storeReceipts.length})</span>}</p>
+        {storeReceipts.length === 0 ? (
+          <EmptyState icon={<Icon name="receipt" size={34} style={{ color: "var(--line-strong)" }} />} title="Belum ada nota" />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {storeReceipts.map(r => { const m = notaMeta(r.type); const ic = ({ drop: "package", cash: "banknote", payment: "coins" })[r.type] || "receipt"; return (
+              <div key={r.id} style={{ background: "var(--bg)", borderRadius: 13, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12, border: "1.5px solid var(--line)" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 11, background: m.soft, color: m.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name={ic} size={19} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <Tag color={m.color}>{m.label}</Tag>
-                    <span style={{ fontSize:11.5, color:"var(--muted)", fontWeight:700 }}>{r.notaNo}</span>
+                    <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700 }}>{r.notaNo}</span>
                   </div>
-                  <p style={{ fontSize:12.5, color:"var(--muted)", marginTop:3, fontWeight:500 }}>{fmtDate(r.date)} · {(r.items||[]).length} item · <b style={{color:m.color}}>{fmt(r.total)}</b></p>
+                  <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3, fontWeight: 500 }}>{fmtDate(r.date)} · {(r.items || []).length} item · <b style={{ color: m.color }}>{fmt(r.total)}</b></p>
                 </div>
-                <div style={{ display:"flex", gap:6 }}>
-                  <Btn size="sm" variant="ghost" onClick={() => setPreview(r)}>👁</Btn>
-                  <Btn size="sm" variant="primary" onClick={() => printNota(r, COMPANY)}>🖨️</Btn>
-                  <Btn size="sm" variant="danger" onClick={() => askDelReceipt(r)}>🗑</Btn>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => setPreview(r)} title="Lihat" style={{ width: 32, height: 32, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="eye" size={15} /></button>
+                  <button onClick={() => printNota(r, COMPANY)} title="Cetak" style={{ width: 32, height: 32, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--brand)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="printer" size={15} /></button>
+                  <button onClick={() => askDelReceipt(r)} title="Hapus" style={{ width: 32, height: 32, borderRadius: 8, border: "1.5px solid var(--line)", background: "var(--surface)", color: "var(--red)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="trash" size={15} /></button>
                 </div>
               </div>
             ); })}
           </div>
         )}
       </Card>
+
+      {(() => {
+        const p = photos.find(x => x.id === photoView);
+        if (!p) return null;
+        return (
+          <Modal show={true} onClose={() => setPhotoView(null)} title="Foto Toko" wide>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ background: "var(--bg-2)", borderRadius: 14, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "center" }}>
+                <img src={p.src} alt={p.caption || "Foto"} style={{ maxWidth: "100%", maxHeight: "56vh", objectFit: "contain", display: "block" }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 7 }}>Kategori</p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {Object.entries(PHOTO_LABELS).map(([k, m]) => {
+                    const on = (p.label || "lainnya") === k;
+                    return <button key={k} onClick={() => patchPhoto(p.id, { label: k })} style={{ padding: "7px 15px", borderRadius: 999, border: `1.5px solid ${on ? m.color : "var(--line-strong)"}`, background: on ? m.color : "var(--surface)", color: on ? "#fff" : "var(--ink-2)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "var(--font)" }}>{m.label}</button>;
+                  })}
+                </div>
+              </div>
+              <FG label="Keterangan">
+                <input value={capDraft} onChange={e => setCapDraft(e.target.value)} onBlur={() => patchPhoto(p.id, { caption: capDraft.trim() })} placeholder="mis. Stok rak depan, sisa 5 bungkus" />
+              </FG>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{fmtDate(new Date(p.ts).toISOString().slice(0, 10))}</span>
+                <Btn variant="danger" size="sm" icon={<Icon name="trash" size={15} />} onClick={() => confirm({ title: "Hapus foto?", message: "Foto ini akan dihapus permanen.", confirmText: "Ya, Hapus", onConfirm: () => deletePhoto(p.id) })}>Hapus Foto</Btn>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* Drop modal */}
       <Modal show={showDrop} onClose={() => setShowDrop(false)} title="Drop Barang" subtitle={store.name} wide>
@@ -1936,7 +2059,7 @@ function StoreDetail({ store, data, setData, onBack }) {
               <div key={i} style={{ background:"var(--bg)", borderRadius:13, padding:13, marginBottom:10, border:"1.5px solid var(--line)" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                   <p style={{ fontSize:12.5, fontWeight:800, color:"var(--muted)" }}>Barang #{i+1}</p>
-                  {dropItems.length > 1 && <Btn size="sm" variant="danger" onClick={() => removeDropItem(i)}>🗑</Btn>}
+                  {dropItems.length > 1 && <Btn size="sm" variant="danger" onClick={() => removeDropItem(i)}><Icon name="trash" size={14} /></Btn>}
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns: "2fr 1fr", gap:8, marginBottom: subtotal > 0 ? 8 : 0 }}>
                   <select value={item.productId} onChange={e => updateDropItem(i, "productId", e.target.value)}>
@@ -1965,9 +2088,6 @@ function StoreDetail({ store, data, setData, onBack }) {
 
       {/* Cash sale modal */}
       <Modal show={showCash} onClose={() => setShowCash(false)} title="Jual Tunai (Bayar Cash)" subtitle={store.name} wide>
-        <div style={{ background:"var(--green-soft)", border:"1.5px solid #BCE6D2", borderRadius:12, padding:"12px 15px", marginBottom:16, fontSize:13, color:"var(--ink-2)", lineHeight:1.55, fontWeight:500 }}>
-          💵 Untuk toko yang <b>beli putus / bayar tunai</b> (bukan titip). Penjualan langsung tercatat sebagai pemasukan & dibuatkan nota. <b>Tidak memengaruhi stok titipan.</b>
-        </div>
         <FG label="Tanggal Penjualan"><input type="date" value={cashDate} onChange={e=>setCashDate(e.target.value)} /></FG>
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 8 }}>Barang yang Dibeli</label>
@@ -1978,7 +2098,7 @@ function StoreDetail({ store, data, setData, onBack }) {
               <div key={i} style={{ background:"var(--bg)", borderRadius:13, padding:13, marginBottom:10, border:"1.5px solid var(--line)" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                   <p style={{ fontSize:12.5, fontWeight:800, color:"var(--muted)" }}>Barang #{i+1}</p>
-                  {cashItems.length > 1 && <Btn size="sm" variant="danger" onClick={() => removeCashItem(i)}>🗑</Btn>}
+                  {cashItems.length > 1 && <Btn size="sm" variant="danger" onClick={() => removeCashItem(i)}><Icon name="trash" size={14} /></Btn>}
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns: "2fr 1fr", gap:8, marginBottom: subtotal > 0 ? 8 : 0 }}>
                   <select value={item.productId} onChange={e => updateCashItem(i, "productId", e.target.value)}>
@@ -2007,11 +2127,6 @@ function StoreDetail({ store, data, setData, onBack }) {
 
       {/* Visit modal */}
       <Modal show={showVisit} onClose={() => setShowVisit(false)} title="Kunjungan Toko" subtitle={store.name} wide>
-        <div style={{ background:"var(--brand-soft)", border:"1.5px solid var(--brand-tint)", borderRadius:12, padding:"13px 15px", marginBottom:18, fontSize:13.5, color:"var(--ink-2)", lineHeight:1.6, fontWeight:500 }}>
-          <p style={{ fontWeight:800, marginBottom:4, color:"var(--brand-deep)" }}>📋 Cara Pakai</p>
-          <p>1. Hitung <b>sisa fisik</b> tiap produk di toko, isi di kolom <b>SISA</b>.</p>
-          <p>2. Sistem hitung otomatis yang <b>laku</b> = tagihan pemilik toko.</p>
-        </div>
         {visitItems.map((item,i) => {
           const p = products.find(x=>x.id===item.productId);
           return (
@@ -2021,14 +2136,14 @@ function StoreDetail({ store, data, setData, onBack }) {
                 <Tag color="var(--muted)">Stok awal: {item.remaining} bks</Tag>
               </div>
               <div style={{ marginBottom:12 }}>
-                <p style={{ fontSize:12, fontWeight:800, color:"var(--brand-deep)", textTransform:"uppercase", marginBottom:6 }}>📍 Sisa Fisik di Toko</p>
+                <p style={{ fontSize:12, fontWeight:800, color:"var(--brand-deep)", textTransform:"uppercase", marginBottom:6 }}>Sisa Fisik di Toko</p>
                 <input type="number" inputMode="numeric" value={item.sisaNow} min={0} max={item.remaining} onChange={e => setSisa(i, e.target.value)}
                   className="tnum" style={{ textAlign:"center", fontSize:30, fontWeight:800, color:"var(--brand-deep)", padding:"14px", background:"var(--surface)", border:"2px solid var(--brand)" }} />
               </div>
               <div style={{ background:"var(--green-soft)", border:"1.5px solid #BCE6D2", borderRadius:11, padding:"12px 14px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                   <div>
-                    <p style={{ fontSize:11.5, fontWeight:800, color:"var(--green)", textTransform:"uppercase" }}>💚 Terjual (Otomatis)</p>
+                    <p style={{ fontSize:11.5, fontWeight:800, color:"var(--green)", textTransform:"uppercase" }}>Terjual (Otomatis)</p>
                     <p className="tnum" style={{ fontSize:11.5, color:"var(--muted)", marginTop:2, fontWeight:500 }}>{item.remaining} stok awal − {item.sisaNow} sisa</p>
                   </div>
                   <div style={{ textAlign:"right" }}>
@@ -2042,13 +2157,13 @@ function StoreDetail({ store, data, setData, onBack }) {
         })}
         <div style={{ background:"linear-gradient(120deg, var(--brand), var(--brand-deep))", borderRadius:14, padding:"16px 20px", marginBottom:16, color:"#fff", boxShadow:"0 8px 22px rgba(76,91,212,0.22)" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-            <p style={{ fontSize:13.5, opacity:0.92, fontWeight:600 }}>💰 Setoran Pemilik Toko</p>
+            <p style={{ fontSize:13.5, opacity:0.92, fontWeight:600 }}>Setoran Pemilik Toko</p>
             <p className="tnum" style={{ fontSize:26, fontWeight:800 }}>{fmt(totalTagihanVisit)}</p>
           </div>
         </div>
         <div style={{display:"flex",gap:10}}>
           <Btn full variant="ghost" onClick={()=>setShowVisit(false)}>Batal</Btn>
-          <Btn full onClick={confirmVisit}>✓ Konfirmasi & Buat Nota</Btn>
+          <Btn full icon={<Icon name="check" size={16} />} onClick={confirmVisit}>Konfirmasi & Buat Nota</Btn>
         </div>
       </Modal>
 
