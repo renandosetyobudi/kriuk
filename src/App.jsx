@@ -255,6 +255,7 @@ const INIT = {
   receipts: [],
   receiptCounter: 1,
   assets: [],
+  assetSnapshots: [],
   expenseCategories: ["Produksi","Transport","Kemasan","Gaji","Sewa","Listrik","Lain-lain"],
   expenseAdjustments: {},
   plastics: [
@@ -1219,6 +1220,28 @@ function MetricDetailModal({ metric, data, onClose }) {
   );
 }
 
+function GrowthCard({ label, now, past }) {
+  const has = past != null;
+  const diff = has ? now - past : 0;
+  const pct = (has && past) ? Math.round(diff / Math.abs(past) * 100) : 0;
+  const up = diff >= 0;
+  const col = !has || diff === 0 ? "var(--muted)" : up ? "var(--green)" : "var(--red)";
+  return (
+    <div style={{ background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "13px 14px" }}>
+      <p style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</p>
+      {!has ? <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>Belum ada pembanding</p> : (
+        <>
+          <p className="tnum" style={{ fontSize: 17, fontWeight: 800, color: col, marginTop: 5, lineHeight: 1.1 }}>{diff >= 0 ? "+" : "−"}{fmt(Math.abs(diff))}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: col, fontSize: 12, fontWeight: 800 }}><Icon name={up ? "trending-up" : "trending-down"} size={13} />{Math.abs(pct)}%</span>
+            <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600 }}>dari {fmtShort(past)}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function PersonalDetailModal({ show, transactions, onClose }) {
   if (!show) return null;
   const now = new Date();
@@ -1478,6 +1501,25 @@ function Finance({ data, setData, initialTab, onTabConsumed }) {
   }).filter(Boolean).sort((a, b) => b.owed - a.owed);
   const nilaiTitipanAll = titipanRows.reduce((s, r) => s + r.value, 0);
   const totalAset = manualTotal + piutangAset + nilaiTitipanAll;
+  useEffect(() => {
+    setData(d => {
+      const snaps = d.assetSnapshots || [];
+      if (totalAset === 0 && snaps.length === 0) return d;
+      const todays = snaps.filter(s => s.date === today);
+      if (todays.length && todays[todays.length - 1].total === totalAset) return d;
+      const rest = snaps.filter(s => s.date !== today);
+      return { ...d, assetSnapshots: [...rest, { date: today, total: totalAset }].sort((a, b) => a.date.localeCompare(b.date)) };
+    });
+  }, [totalAset]);
+  const assetSnaps = (data.assetSnapshots || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+  const valueAsOf = (ds) => { let v = null; for (const sn of assetSnaps) { if (sn.date <= ds) v = sn.total; else break; } return v; };
+  const offsetDate = (days) => { const [y, m, dd] = today.split("-").map(Number); const dt = new Date(y, m - 1, dd); dt.setDate(dt.getDate() - days); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`; };
+  const monthAgoStr = (() => { const [y, m, dd] = today.split("-").map(Number); const dt = new Date(y, m - 1, dd); dt.setMonth(dt.getMonth() - 1); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`; })();
+  const growDayBase = valueAsOf(offsetDate(1));
+  const growWeekBase = valueAsOf(offsetDate(7));
+  const growMonthBase = valueAsOf(monthAgoStr);
+  const firstSnap = assetSnaps[0] || null;
+  const growChart = assetSnaps.slice(-60).map(sn => ({ total: sn.total, label: sn.date.slice(8) + "/" + sn.date.slice(5, 7) }));
 
   const titipanBody = (
     <>
@@ -1862,6 +1904,37 @@ function Finance({ data, setData, initialTab, onTabConsumed }) {
                 );
               })}
             </div>
+
+            {!detailView && (
+              <Card style={{ marginBottom: 18 }}>
+                <p style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}><Icon name="trending-up" size={18} /> Pertumbuhan Aset</p>
+                <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginBottom: 16, lineHeight: 1.5 }}>Total aset direkam otomatis tiap hari. Perubahan dihitung dari snapshot terakhir yang tersedia.</p>
+                {assetSnaps.length < 2 ? (
+                  <div style={{ background: "var(--bg)", border: "1.5px dashed var(--line-strong)", borderRadius: 12, padding: "18px 16px", textAlign: "center" }}>
+                    <p style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>Pertumbuhan tampil setelah ada minimal 2 hari data. Nilai hari ini sudah direkam — buka lagi besok untuk melihat perubahan harian.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+                      <GrowthCard label="Harian" now={totalAset} past={growDayBase} />
+                      <GrowthCard label="Mingguan" now={totalAset} past={growWeekBase} />
+                      <GrowthCard label="Bulanan" now={totalAset} past={growMonthBase} />
+                    </div>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={growChart} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                        <defs><linearGradient id="grad-aset" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--brand)" stopOpacity={0.25} /><stop offset="100%" stopColor="var(--brand)" stopOpacity={0} /></linearGradient></defs>
+                        <CartesianGrid strokeDasharray="3 4" stroke="#EFE8DB" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={20} />
+                        <YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtShort} />
+                        <Tooltip contentStyle={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 12, fontSize: 12, boxShadow: "var(--shadow)", fontFamily: "var(--font)" }} formatter={v => fmt(v)} labelFormatter={l => `Tgl ${l}`} />
+                        <Area type="monotone" dataKey="total" stroke="var(--brand)" strokeWidth={3} fill="url(#grad-aset)" dot={{ fill: "var(--brand)", r: 2.5 }} activeDot={{ r: 6 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                    {firstSnap && <p className="tnum" style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, textAlign: "center", marginTop: 8 }}>Sejak {firstSnap.date.slice(8)}/{firstSnap.date.slice(5, 7)}/{firstSnap.date.slice(0, 4)}: <b style={{ color: (totalAset - firstSnap.total) >= 0 ? "var(--green)" : "var(--red)" }}>{(totalAset - firstSnap.total) >= 0 ? "+" : "−"}{fmt(Math.abs(totalAset - firstSnap.total))}</b></p>}
+                  </>
+                )}
+              </Card>
+            )}
 
             {detailView === "titipan" ? (
               <>
