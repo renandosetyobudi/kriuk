@@ -3474,15 +3474,15 @@ function DRow({ label, value, strong, color }) {
   );
 }
 
-function Stepper({ value, setValue, chips }) {
+function Stepper({ value, setValue, chips, allowNegative }) {
   const cur = parseInt(value) || 0;
-  const setN = (n) => setValue(Math.max(0, n));
+  const setN = (n) => setValue(allowNegative ? n : Math.max(0, n));
   const btn = (bg, col) => ({ width: 54, height: 54, borderRadius: 14, border: "1.5px solid var(--line)", background: bg, color: col, fontSize: 28, fontWeight: 800, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 });
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <button type="button" aria-label="Kurangi" onClick={() => setN(cur - 1)} style={btn("var(--red-soft)", "var(--red)")}>−</button>
-        <input type="number" inputMode="numeric" value={value} onChange={e => setValue(e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))} style={{ flex: 1, textAlign: "center", fontSize: 24, fontWeight: 800, padding: "13px 8px", minWidth: 0 }} />
+        <input type="number" inputMode="numeric" value={value} onChange={e => { const raw = e.target.value; if (raw === "" || raw === "-") { setValue(raw); return; } const n = parseInt(raw) || 0; setValue(allowNegative ? n : Math.max(0, n)); }} style={{ flex: 1, textAlign: "center", fontSize: 24, fontWeight: 800, padding: "13px 8px", minWidth: 0 }} />
         <button type="button" aria-label="Tambah" onClick={() => setN(cur + 1)} style={btn("var(--green-soft)", "var(--green)")}>+</button>
       </div>
       {chips && chips.length > 0 && (
@@ -3539,10 +3539,10 @@ function Production({ data, setData }) {
   };
   const delVar = (v) => confirm({ title: "Hapus varian?", message: `Varian "${v.name}" akan dihapus beserta data stoknya.`, confirmText: "Ya, Hapus", onConfirm: () => setData(d => ({ ...d, variants: (d.variants || []).filter(x => x.id !== v.id) })) });
 
-  const openStock = (v) => { setStockTarget(v); setStockVal(+v.stock || 0); setBsVal(+v.bs || 0); };
+  const openStock = (v) => { setStockTarget(v); setStockVal(0); setBsVal(0); };
   const closeStock = () => { setStockTarget(null); setStockVal(0); setBsVal(0); };
   const saveStock = () => {
-    setData(d => ({ ...d, variants: (d.variants || []).map(x => x.id === stockTarget.id ? { ...x, stock: Math.max(0, parseInt(stockVal) || 0), bs: Math.max(0, parseInt(bsVal) || 0) } : x) }));
+    setData(d => ({ ...d, variants: (d.variants || []).map(x => x.id === stockTarget.id ? { ...x, stock: Math.max(0, (+x.stock || 0) + (parseInt(stockVal) || 0)), bs: Math.max(0, (+x.bs || 0) + (parseInt(bsVal) || 0)) } : x) }));
     closeStock();
   };
 
@@ -3755,14 +3755,14 @@ function Production({ data, setData }) {
       <Modal show={!!stockTarget} onClose={closeStock} title={stockTarget ? `Update Stok — ${stockTarget.name}` : "Update Stok"}>
         {stockTarget && <p style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500, marginBottom: 16 }}>Saat ini: <b style={{ color: "var(--ink)" }}>{stockTarget.stock || 0}</b> bks stok · <b style={{ color: "var(--ink)" }}>{stockTarget.bs || 0}</b> bks BS/Retur.</p>}
         <div style={{ marginBottom: 18 }}>
-          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 9, letterSpacing: "-0.01em" }}>Stok (bungkus)</label>
-          <Stepper value={stockVal} setValue={setStockVal} chips={[10, 25, 50, 100]} />
-          {stockTarget && <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 9 }}>dari {stockTarget.stock || 0} → <b style={{ color: "var(--ink)" }}>{parseInt(stockVal) || 0}</b> ({((parseInt(stockVal) || 0) - (stockTarget.stock || 0)) >= 0 ? "+" : ""}{(parseInt(stockVal) || 0) - (stockTarget.stock || 0)} bks)</p>}
+          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 9, letterSpacing: "-0.01em" }}>Tambah Stok (bungkus)</label>
+          <Stepper value={stockVal} setValue={setStockVal} chips={[10, 25, 50, 100]} allowNegative />
+          {stockTarget && (() => { const dlt = parseInt(stockVal) || 0; const fin = Math.max(0, (stockTarget.stock || 0) + dlt); return <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 9 }}>Masukkan jumlah produksi baru (minus untuk koreksi) · stok jadi: {stockTarget.stock || 0} {dlt >= 0 ? "+" : "−"} {Math.abs(dlt)} = <b style={{ color: "var(--ink)" }}>{fin} bks</b></p>; })()}
         </div>
         <div style={{ marginBottom: 18 }}>
-          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 9, letterSpacing: "-0.01em" }}>BS / Retur (bungkus)</label>
-          <Stepper value={bsVal} setValue={setBsVal} chips={[1, 5, 10]} />
-          {stockTarget && <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 9 }}>Barang rusak atau retur dari toko.</p>}
+          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--ink-2)", marginBottom: 9, letterSpacing: "-0.01em" }}>Tambah BS / Retur (bungkus)</label>
+          <Stepper value={bsVal} setValue={setBsVal} chips={[1, 5, 10]} allowNegative />
+          {stockTarget && (() => { const dlt = parseInt(bsVal) || 0; const fin = Math.max(0, (stockTarget.bs || 0) + dlt); return <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 9 }}>Barang rusak / retur baru · BS jadi: {stockTarget.bs || 0} {dlt >= 0 ? "+" : "−"} {Math.abs(dlt)} = <b style={{ color: "var(--ink)" }}>{fin} bks</b></p>; })()}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <Btn full variant="ghost" onClick={closeStock}>Batal</Btn>
