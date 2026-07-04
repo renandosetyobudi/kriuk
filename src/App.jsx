@@ -3482,7 +3482,7 @@ function Stepper({ value, setValue, chips, allowNegative }) {
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <button type="button" aria-label="Kurangi" onClick={() => setN(cur - 1)} style={btn("var(--red-soft)", "var(--red)")}>−</button>
-        <input type="number" inputMode="numeric" value={value} onChange={e => { const raw = e.target.value; if (raw === "" || raw === "-") { setValue(raw); return; } const n = parseInt(raw) || 0; setValue(allowNegative ? n : Math.max(0, n)); }} style={{ flex: 1, textAlign: "center", fontSize: 24, fontWeight: 800, padding: "13px 8px", minWidth: 0 }} />
+        <input type="number" inputMode="numeric" placeholder="0" value={value} onFocus={e => e.target.select()} onChange={e => { const raw = e.target.value; if (raw === "" || raw === "-") { setValue(raw); return; } const n = parseInt(raw) || 0; setValue(allowNegative ? n : Math.max(0, n)); }} style={{ flex: 1, textAlign: "center", fontSize: 24, fontWeight: 800, padding: "13px 8px", minWidth: 0 }} />
         <button type="button" aria-label="Tambah" onClick={() => setN(cur + 1)} style={btn("var(--green-soft)", "var(--green)")}>+</button>
       </div>
       {chips && chips.length > 0 && (
@@ -3539,8 +3539,8 @@ function Production({ data, setData }) {
   };
   const delVar = (v) => confirm({ title: "Hapus varian?", message: `Varian "${v.name}" akan dihapus beserta data stoknya.`, confirmText: "Ya, Hapus", onConfirm: () => setData(d => ({ ...d, variants: (d.variants || []).filter(x => x.id !== v.id) })) });
 
-  const openStock = (v) => { setStockTarget(v); setStockVal(0); setBsVal(0); };
-  const closeStock = () => { setStockTarget(null); setStockVal(0); setBsVal(0); };
+  const openStock = (v) => { setStockTarget(v); setStockVal(""); setBsVal(""); };
+  const closeStock = () => { setStockTarget(null); setStockVal(""); setBsVal(""); };
   const saveStock = () => {
     setData(d => ({ ...d, variants: (d.variants || []).map(x => x.id === stockTarget.id ? { ...x, stock: Math.max(0, (+x.stock || 0) + (parseInt(stockVal) || 0)), bs: Math.max(0, (+x.bs || 0) + (parseInt(bsVal) || 0)) } : x) }));
     closeStock();
