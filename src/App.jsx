@@ -194,6 +194,36 @@ const resolveMonth = (m) => {
 };
 const normTxType = (t) => { const s = String(t || "").toLowerCase(); if (/masuk|income|pemasukan|omset|jual/.test(s)) return "income"; if (/keluar|expense|pengeluaran|beli|biaya/.test(s)) return "expense"; return null; };
 // Pengingat: rute yang dikunjungi ≤2 hari lagi + catatan toko di rute itu
+let deferredInstallPrompt = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstallPrompt = e; });
+}
+const isStandalone = () => {
+  try { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch { return false; }
+};
+
+const BACKUP_DUE_DAYS = 7;
+const backupStatus = (data) => {
+  const hasData = ((data.transactions || []).length + (data.stores || []).length) > 0;
+  if (!hasData) return null;
+  const last = +data.lastBackupAt || 0;
+  if (!last) return { neverBackedUp: true, daysSince: null, due: true };
+  const daysSince = Math.floor((Date.now() - last) / 86400000);
+  return { neverBackedUp: false, daysSince, due: daysSince >= BACKUP_DUE_DAYS };
+};
+const buildBackupPayload = (data) => JSON.stringify({ app: "SB FOOD - Snack Kriuk", schema: "kriuk_v6", exportedAt: new Date().toISOString(), data }, null, 2);
+const triggerBackupDownload = (data) => {
+  try {
+    const blob = new Blob([buildBackupPayload(data)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `sb-food-backup-${today}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  } catch { return false; }
+};
+
 const buildReminders = (data) => {
   const list = [];
   (data.routes || []).forEach(r => {
@@ -205,6 +235,8 @@ const buildReminders = (data) => {
     storesIn.forEach(s => { if (s.note && String(s.note).trim()) list.push({ id: `note-${s.id}`, kind: "note", title: s.name, detail: String(s.note).trim(), when: n, whenLabel: whenLabel(n), storeId: s.id }); });
   });
   list.sort((a, b) => a.when - b.when || (a.kind === b.kind ? 0 : a.kind === "route" ? -1 : 1));
+  const bs = backupStatus(data);
+  if (bs && bs.due) list.unshift({ id: "backup", kind: "backup", title: "Backup data usaha", detail: bs.neverBackedUp ? "Data belum pernah di-backup. Amankan lewat menu Pengaturan atau tombol di Beranda." : `Terakhir ${bs.daysSince} hari lalu. Disarankan backup tiap minggu.`, when: 0, whenLabel: "Penting" });
   return list;
 };
 
@@ -256,6 +288,7 @@ const INIT = {
   receiptCounter: 1,
   assets: [],
   assetSnapshots: [],
+  lastBackupAt: 0,
   expenseCategories: ["Produksi","Transport","Kemasan","Gaji","Sewa","Listrik","Lain-lain"],
   expenseAdjustments: {},
   plastics: [
@@ -771,7 +804,7 @@ const NAV = [
 const BOTTOM_TABS = ["dashboard", "stores", "finance", "receipts"]; // + "more"
 
 // Notification bell (top-right) — pengingat kunjungan & catatan toko
-function NotificationBell({ reminders, onOpenStore }) {
+function NotificationBell({ reminders, onOpenStore, onGoSettings }) {
   const [open, setOpen] = useState(false);
   const count = reminders.length;
   return (
@@ -797,9 +830,9 @@ function NotificationBell({ reminders, onOpenStore }) {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {reminders.map(r => (
-                  <button key={r.id} onClick={() => { if (r.storeId) { onOpenStore(r.storeId); setOpen(false); } }}
-                    style={{ textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start", background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 11, padding: "10px 12px", cursor: r.storeId ? "pointer" : "default", fontFamily: "var(--font)", width: "100%" }}>
-                    <span style={{ flexShrink: 0, color:"var(--brand)", display:"flex" }}><Icon name={r.kind === "route" ? "map-pin" : "note"} size={17} /></span>
+                  <button key={r.id} onClick={() => { if (r.kind === "backup") { if (onGoSettings) onGoSettings(); setOpen(false); } else if (r.storeId) { onOpenStore(r.storeId); setOpen(false); } }}
+                    style={{ textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start", background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 11, padding: "10px 12px", cursor: (r.storeId || r.kind === "backup") ? "pointer" : "default", fontFamily: "var(--font)", width: "100%" }}>
+                    <span style={{ flexShrink: 0, color: r.kind === "backup" ? "var(--amber)" : "var(--brand)", display:"flex" }}><Icon name={r.kind === "route" ? "map-pin" : r.kind === "backup" ? "save" : "note"} size={17} /></span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--ink)" }}>{r.title}</span>
@@ -916,7 +949,7 @@ function MoreSheet({ show, onClose, page, setPage }) {
 // ─────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────
-function Dashboard({ data, setPage }) {
+function Dashboard({ data, setData, setPage }) {
   const { transactions, consignments, stores, products, routes, notes } = data;
 
   const todayIncome = transactions.filter(t => t.date === today && t.type === "income").reduce((s,t) => s+t.amount, 0);
@@ -965,6 +998,22 @@ function Dashboard({ data, setPage }) {
           <span style={{ color: "#fff", fontSize: 22, opacity: 0.9, position: "relative" }}>→</span>
         </div>
       )}
+
+      {(() => {
+        const bk = backupStatus(data);
+        if (!bk || !bk.due) return null;
+        const quickBackup = () => { if (triggerBackupDownload(data)) setData(d => ({ ...d, lastBackupAt: Date.now() })); else setPage("settings"); };
+        return (
+          <div className="fade-up" style={{ background: "var(--amber-soft)", border: "1.5px solid var(--amber)", borderRadius: "var(--r)", padding: "14px 16px", marginBottom: 16, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ width: 42, height: 42, borderRadius: 12, background: "var(--surface)", color: "var(--amber)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name="save" size={20} /></span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <p style={{ fontSize: 14, fontWeight: 800 }}>Amankan data usaha Anda</p>
+              <p style={{ fontSize: 12.5, color: "var(--ink-2)", fontWeight: 500, marginTop: 2, lineHeight: 1.5 }}>{bk.neverBackedUp ? "Data hanya tersimpan di perangkat ini dan belum pernah di-backup. Jika HP hilang atau cache terhapus, data tidak bisa dikembalikan." : `Backup terakhir ${bk.daysSince} hari lalu — disarankan backup setiap minggu.`}</p>
+            </div>
+            <Btn size="sm" icon={<Icon name="download" size={15} />} onClick={quickBackup}>Backup Sekarang</Btn>
+          </div>
+        );
+      })()}
 
       <div className="stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
         <StatCard label="Omset Hari Ini" value={fmtShort(todayIncome)} icon={<Icon name="coins" size={20} />} color="var(--green)" soft="var(--green-soft)" onClick={() => setPage("finance")} />
@@ -3538,7 +3587,7 @@ function Production({ data, setData }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
               <StatCard label="Varian" value={variants.length} icon={<Icon name="layers" size={20} />} color="var(--brand)" soft="var(--brand-soft)" />
               <StatCard label="Total Stok" value={`${totalStock} bks`} icon={<Icon name="package" size={20} />} color="var(--green)" soft="var(--green-soft)" onClick={variants.length ? () => setSummaryView("stock") : undefined} />
-              <StatCard label="BS / Retur" value={`${totalBs} bks`} icon={<Icon name="alert" size={20} />} color="var(--red)" soft="var(--red-soft)" onClick={variants.length ? () => setSummaryView("bs") : undefined} />
+              <StatCard label="BS / Retur" value={`${totalBs} bks`} sub={(totalStock + totalBs) > 0 ? `${Math.round(totalBs / (totalStock + totalBs) * 100)}% dari total produksi` : undefined} icon={<Icon name="alert" size={20} />} color="var(--red)" soft="var(--red-soft)" onClick={variants.length ? () => setSummaryView("bs") : undefined} />
               <StatCard label="Nilai Stok (HPP)" value={fmtShort(stockValue)} icon={<Icon name="coins" size={20} />} color="var(--amber)" soft="var(--amber-soft)" onClick={variants.length ? () => setSummaryView("value") : undefined} />
             </div>
             {variants.length === 0 ? (
@@ -3573,7 +3622,7 @@ function Production({ data, setData }) {
                         </div>
                         <div style={{ background: (v.bs > 0 ? "var(--red-soft)" : "var(--bg)"), border: "1.5px solid var(--line)", borderRadius: 12, padding: "12px", textAlign: "center" }}>
                           <p className="tnum" style={{ fontSize: 26, fontWeight: 800, color: (v.bs > 0 ? "var(--red)" : "var(--muted)"), lineHeight: 1 }}>{v.bs || 0}</p>
-                          <p style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>BS / Retur</p>
+                          <p className="tnum" style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>BS / Retur{((+v.stock || 0) + (+v.bs || 0)) > 0 && (+v.bs || 0) > 0 ? ` · ${Math.round((+v.bs) / ((+v.stock || 0) + (+v.bs)) * 100)}%` : ""}</p>
                         </div>
                       </div>
                       <Btn full size="sm" variant="outline" icon={<Icon name="package" size={14} />} onClick={(e) => { e.stopPropagation(); openStock(v); }}>Update Stok</Btn>
@@ -3772,6 +3821,11 @@ function Production({ data, setData }) {
                 <p style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginTop: 5, textTransform: "uppercase", letterSpacing: "0.04em" }}>nilai stok</p>
               </div>
             </div>
+            {((dv.stock || 0) + (dv.bs || 0)) > 0 && (
+              <p className="tnum" style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700, textAlign: "center", marginTop: 10 }}>
+                Rasio BS: <b style={{ color: (dv.bs || 0) > 0 ? "var(--red)" : "var(--green)" }}>{Math.round((+dv.bs || 0) / ((+dv.stock || 0) + (+dv.bs || 0)) * 100)}%</b> dari total produksi
+              </p>
+            )}
             {sec("Harga & Margin")}
             <DRow label="Harga jual / bungkus" value={fmt(dv.sellPrice || 0)} />
             <DRow label="HPP / bungkus" value={fmt(Math.round(h.total))} color="var(--amber)" />
@@ -3854,26 +3908,19 @@ function Settings({ data, setData }) {
     catatan: (data.notes || []).length,
   };
 
-  const buildPayload = () => JSON.stringify({ app: "SB FOOD - Snack Kriuk", schema: "kriuk_v6", exportedAt: new Date().toISOString(), data }, null, 2);
+  const buildPayload = () => buildBackupPayload(data);
+  const markBackedUp = () => setData(d => ({ ...d, lastBackupAt: Date.now() }));
 
   const downloadBackup = () => {
-    try {
-      const blob = new Blob([buildPayload()], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `sb-food-backup-${today}.json`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMsg({ type: "ok", text: "Backup berhasil diunduh. Simpan file di tempat aman (Drive, email, dll)." });
-    } catch {
-      setMsg({ type: "error", text: "Unduhan diblokir di lingkungan ini. Pakai 'Salin Teks Backup' sebagai gantinya." });
-    }
+    if (triggerBackupDownload(data)) { markBackedUp(); setMsg({ type: "ok", text: "Backup berhasil diunduh. Simpan file di tempat aman (Drive, email, dll)." }); }
+    else setMsg({ type: "error", text: "Unduhan diblokir di lingkungan ini. Pakai 'Salin Teks Backup' sebagai gantinya." });
   };
 
   const copyBackup = async () => {
     const text = buildPayload();
     try {
       await navigator.clipboard.writeText(text);
+      markBackedUp();
       setMsg({ type: "ok", text: "Teks backup tersalin ke clipboard. Tempel & simpan di catatan/email Anda." });
     } catch {
       setPasteOpen(true); setPasteText(text);
@@ -3927,6 +3974,34 @@ function Settings({ data, setData }) {
 
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--brand-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--brand)" }}><Icon name="download" size={22} /></div>
+          <div>
+            <p style={{ fontWeight: 800, fontSize: 16 }}>Pasang Aplikasi</p>
+            <p style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Install ke layar utama, bisa dibuka offline</p>
+          </div>
+        </div>
+        {isStandalone() ? (
+          <div style={{ background: "var(--green-soft)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "11px 14px", display: "flex", gap: 8, alignItems: "center" }}>
+            <Icon name="check" size={16} style={{ color: "var(--green)", flexShrink: 0 }} />
+            <p style={{ fontSize: 13, color: "var(--ink-2)", fontWeight: 700 }}>Aplikasi sudah terpasang & berjalan mandiri.</p>
+          </div>
+        ) : (
+          <>
+            {deferredInstallPrompt && (
+              <Btn full icon={<Icon name="download" size={16} />} onClick={async () => { try { deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; deferredInstallPrompt = null; } catch {} }} >Pasang di Perangkat Ini</Btn>
+            )}
+            <div style={{ background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "12px 14px", marginTop: deferredInstallPrompt ? 10 : 0 }}>
+              <p style={{ fontSize: 12.5, fontWeight: 800, color: "var(--ink-2)", marginBottom: 4 }}>iPhone (Safari)</p>
+              <p style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500, lineHeight: 1.55 }}>Buka situs ini di Safari → tombol <b>Bagikan</b> → <b>Tambahkan ke Layar Utama</b> → Tambah.</p>
+              <p style={{ fontSize: 12.5, fontWeight: 800, color: "var(--ink-2)", margin: "10px 0 4px" }}>Android (Chrome)</p>
+              <p style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500, lineHeight: 1.55 }}>Menu titik tiga → <b>Instal aplikasi</b>, atau pakai tombol di atas bila muncul.</p>
+            </div>
+          </>
+        )}
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--green-soft)", display: "flex", alignItems: "center", justifyContent: "center", color:"var(--green)" }}><Icon name="save" size={22} /></div>
           <div>
             <p style={{ fontWeight: 800, fontSize: 16 }}>Backup Data</p>
@@ -3938,6 +4013,9 @@ function Settings({ data, setData }) {
             Termasuk: <b>{counts.toko}</b> toko · <b>{counts.produk}</b> produk · <b>{counts.transaksi}</b> transaksi · <b>{counts.nota}</b> nota · <b>{counts.catatan}</b> catatan
           </p>
         </div>
+        <p style={{ fontSize: 12.5, fontWeight: 700, color: data.lastBackupAt ? "var(--muted)" : "var(--amber)", margin: "-4px 0 14px" }}>
+          Backup terakhir: {data.lastBackupAt ? new Date(data.lastBackupAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "belum pernah"}
+        </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 150 }}><Btn full icon={<Icon name="download" size={16} />} onClick={downloadBackup}>Unduh File Backup</Btn></div>
           <div style={{ flex: 1, minWidth: 150 }}><Btn full variant="outline" icon={<Icon name="copy" size={16} />} onClick={copyBackup}>Salin Teks Backup</Btn></div>
@@ -4736,7 +4814,7 @@ export default function App() {
               <TopNav page={page} setPage={navigate} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-              <NotificationBell reminders={reminders} onOpenStore={(id) => { setSelectedStoreId(id); navigate("stores"); }} />
+              <NotificationBell reminders={reminders} onOpenStore={(id) => { setSelectedStoreId(id); navigate("stores"); }} onGoSettings={() => navigate("settings")} />
               <div style={{ textAlign: "right" }} className="date-display">
                 <p style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>{todayDay}</p>
                 <p style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500 }}>{tdyDate}</p>
