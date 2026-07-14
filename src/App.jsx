@@ -69,6 +69,20 @@ const CSS = `
   @keyframes pop { 0%{transform:scale(0.96);opacity:0} 60%{transform:scale(1.01)} 100%{transform:scale(1);opacity:1} }
   @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
   .fade-up { animation: fadeIn 0.3s ease backwards; }
+  @keyframes sheetSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(33,26,18,0.42); backdrop-filter: blur(6px); z-index: 900; display: flex; align-items: flex-end; justify-content: center; }
+  .modal-panel { background: var(--surface); width: 100%; max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; border-radius: 22px 22px 0 0; box-shadow: var(--shadow-lg); animation: sheetSlideUp 0.32s cubic-bezier(.22,1,.36,1) both; }
+  .modal-handle { display: flex; justify-content: center; padding: 10px 0 4px; cursor: grab; touch-action: none; flex-shrink: 0; }
+  .modal-handle span { width: 42px; height: 4.5px; border-radius: 99px; background: var(--line-strong); }
+  .modal-head { padding: 4px 20px 14px; border-bottom: 1px solid var(--line); flex-shrink: 0; touch-action: none; }
+  .modal-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 18px 20px calc(26px + env(safe-area-inset-bottom)); }
+  @media (min-width: 640px) {
+    .modal-overlay { align-items: center; padding: 28px; }
+    .modal-panel { max-width: var(--modal-w, 480px); border-radius: var(--r-lg); max-height: calc(100vh - 90px); max-height: calc(100dvh - 90px); animation: sheetUp 0.3s cubic-bezier(.22,1,.36,1) both; }
+    .modal-handle { display: none; }
+    .modal-head { padding-top: 20px; }
+    .modal-body { padding-bottom: 24px; }
+  }
   .slide-down { animation: fadeIn 0.18s ease backwards; }
   .stagger > * { animation: fadeUp 0.4s cubic-bezier(.22,1,.36,1) backwards; }
   .stagger > *:nth-child(1){animation-delay:.02s} .stagger > *:nth-child(2){animation-delay:.06s}
@@ -313,6 +327,16 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const fmt = (n) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n || 0);
 const fmtShort = (n) => n >= 1e6 ? `${(n/1e6).toFixed(1)}jt` : n >= 1e3 ? `${(n/1e3).toFixed(0)}rb` : String(n||0);
 const fmtDate = (d) => d ? new Date(d+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}) : "-";
+const timeAgo = (ts) => {
+  if (!ts) return "";
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 60) return "baru saja";
+  const m = Math.floor(sec / 60); if (m < 60) return `${m} mnt lalu`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h} jam lalu`;
+  const d2 = Math.floor(h / 24); if (d2 < 30) return `${d2} hari lalu`;
+  const mo = Math.floor(d2 / 30); if (mo < 12) return `${mo} bln lalu`;
+  return `${Math.floor(mo / 12)} thn lalu`;
+};
 
 const hasCoords = (o) => o && typeof o.lat === "number" && typeof o.lng === "number" && !isNaN(o.lat) && !isNaN(o.lng);
 const distanceKm = (lat1, lon1, lat2, lon2) => {
@@ -588,6 +612,8 @@ function Btn({ children, onClick, variant = "primary", size = "md", icon, full, 
 }
 
 function Modal({ show, onClose, title, subtitle, children, wide }) {
+  const panelRef = useRef(null);
+  const drag = useRef({ y: 0, dy: 0, active: false });
   useEffect(() => {
     if (show) {
       const prev = document.body.style.overflow;
@@ -596,30 +622,40 @@ function Modal({ show, onClose, title, subtitle, children, wide }) {
     }
   }, [show]);
   if (!show) return null;
+  const onTouchStart = (e) => {
+    drag.current = { y: e.touches[0].clientY, dy: 0, active: true };
+    if (panelRef.current) panelRef.current.style.transition = "none";
+  };
+  const onTouchMove = (e) => {
+    if (!drag.current.active) return;
+    const dy = Math.max(0, e.touches[0].clientY - drag.current.y);
+    drag.current.dy = dy;
+    if (panelRef.current) panelRef.current.style.transform = `translateY(${dy}px)`;
+  };
+  const onTouchEnd = () => {
+    if (!drag.current.active) return;
+    const dy = drag.current.dy; drag.current.active = false;
+    const el = panelRef.current; if (!el) return;
+    el.style.transition = "transform .22s ease";
+    if (dy > 110) { el.style.transform = "translateY(105%)"; setTimeout(onClose, 170); }
+    else { el.style.transform = "translateY(0)"; setTimeout(() => { if (el) { el.style.transition = ""; el.style.transform = ""; } }, 240); }
+  };
   return (
-    <div onClick={onClose} style={{
-      position: "fixed", inset: 0, background: "rgba(33,26,18,0.42)", backdropFilter: "blur(6px)",
-      zIndex: 900, overflowY: "auto", WebkitOverflowScrolling: "touch",
-      paddingTop: "calc(20px + env(safe-area-inset-top))",
-      paddingBottom: "calc(28px + env(safe-area-inset-bottom))",
-      paddingLeft: 14, paddingRight: 14,
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{ animation: "sheetUp 0.3s cubic-bezier(.22,1,.36,1) both",
-          background: "var(--surface)", borderRadius: "var(--r-lg)", padding: 24,
-          width: "100%", maxWidth: wide ? 660 : 480,
-          boxShadow: "var(--shadow-lg)", margin: "0 auto",
-        }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start",
-          marginBottom: 18, paddingBottom: 14, borderBottom: "1px solid var(--line)" }}>
-          <div style={{ minWidth: 0 }}>
-            <h3 style={{ fontSize: 19, fontWeight: 800, color: "var(--ink)" }}>{title}</h3>
-            {subtitle && <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 2, fontWeight: 500 }}>{subtitle}</p>}
+    <div className="modal-overlay" onClick={onClose}>
+      <div ref={panelRef} className="modal-panel" onClick={e => e.stopPropagation()} style={wide ? { "--modal-w": "660px" } : undefined}>
+        <div className="modal-handle" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}><span /></div>
+        <div className="modal-head" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ fontSize: 19, fontWeight: 800, color: "var(--ink)" }}>{title}</h3>
+              {subtitle && <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 2, fontWeight: 500 }}>{subtitle}</p>}
+            </div>
+            <button onClick={onClose} style={{ width: 38, height: 38, borderRadius: 999, border: "none", background: "var(--bg-2)", color: "var(--muted)", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .15s" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "var(--red-soft)"; e.currentTarget.style.color = "var(--red)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "var(--bg-2)"; e.currentTarget.style.color = "var(--muted)"; }}><Icon name="x" size={16} /></button>
           </div>
-          <button onClick={onClose} style={{ width: 40, height: 40, borderRadius: 999, border: "none", background: "var(--bg-2)", color: "var(--muted)", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .15s" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "var(--red-soft)"; e.currentTarget.style.color = "var(--red)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "var(--bg-2)"; e.currentTarget.style.color = "var(--muted)"; }}><Icon name="x" size={16} /></button>
         </div>
-        <div>{children}</div>
+        <div className="modal-body">{children}</div>
       </div>
     </div>
   );
@@ -3509,7 +3545,7 @@ function Production({ data, setData }) {
   const [tab, setTab] = useState("stok");
   const { confirm, Dialog } = useConfirm();
 
-  const emptyVar = { name: "", pricePerBall: "", packsPerBall: "", plastikId: plastics[0]?.id || "", labelId: labels[0]?.id || "", sellPrice: "", stock: "", bs: "" };
+  const emptyVar = { name: "", photo: "", pricePerBall: "", packsPerBall: "", plastikId: plastics[0]?.id || "", labelId: labels[0]?.id || "", sellPrice: "", stock: "", bs: "" };
   const [showVar, setShowVar] = useState(false);
   const [editVarId, setEditVarId] = useState(null);
   const [vf, setVf] = useState(emptyVar);
@@ -3529,10 +3565,10 @@ function Production({ data, setData }) {
   const [lf, setLf] = useState({ name: "", pricePerSheet: "", perSheet: "48" });
 
   const openVarAdd = () => { setVf({ ...emptyVar, plastikId: plastics[0]?.id || "", labelId: labels[0]?.id || "" }); setEditVarId(null); setShowVar(true); };
-  const openVarEdit = (v) => { setVf({ name: v.name, pricePerBall: String(v.pricePerBall ?? v.pricePerKg ?? ""), packsPerBall: String(v.packsPerBall ?? v.packsPerKg ?? ""), plastikId: v.plastikId || "", labelId: v.labelId || "", sellPrice: String(v.sellPrice ?? ""), stock: String(v.stock ?? ""), bs: String(v.bs ?? "") }); setEditVarId(v.id); setShowVar(true); };
+  const openVarEdit = (v) => { setVf({ name: v.name, photo: v.photo || "", pricePerBall: String(v.pricePerBall ?? v.pricePerKg ?? ""), packsPerBall: String(v.packsPerBall ?? v.packsPerKg ?? ""), plastikId: v.plastikId || "", labelId: v.labelId || "", sellPrice: String(v.sellPrice ?? ""), stock: String(v.stock ?? ""), bs: String(v.bs ?? "") }); setEditVarId(v.id); setShowVar(true); };
   const saveVar = () => {
     if (!vf.name || !vf.pricePerBall || !vf.packsPerBall) return;
-    const rec = { name: vf.name.trim(), pricePerBall: +vf.pricePerBall, packsPerBall: +vf.packsPerBall, plastikId: vf.plastikId, labelId: vf.labelId, sellPrice: +vf.sellPrice || 0, stock: Math.max(0, parseInt(vf.stock) || 0), bs: Math.max(0, parseInt(vf.bs) || 0) };
+    const rec = { name: vf.name.trim(), photo: vf.photo || "", pricePerBall: +vf.pricePerBall, packsPerBall: +vf.packsPerBall, plastikId: vf.plastikId, labelId: vf.labelId, sellPrice: +vf.sellPrice || 0, stock: Math.max(0, parseInt(vf.stock) || 0), bs: Math.max(0, parseInt(vf.bs) || 0), updatedAt: Date.now() };
     if (editVarId) setData(d => ({ ...d, variants: (d.variants || []).map(x => x.id === editVarId ? { ...x, ...rec } : x) }));
     else setData(d => ({ ...d, variants: [...(d.variants || []), { id: uid(), ...rec }] }));
     setShowVar(false); setEditVarId(null);
@@ -3542,7 +3578,7 @@ function Production({ data, setData }) {
   const openStock = (v) => { setStockTarget(v); setStockVal(""); setBsVal(""); };
   const closeStock = () => { setStockTarget(null); setStockVal(""); setBsVal(""); };
   const saveStock = () => {
-    setData(d => ({ ...d, variants: (d.variants || []).map(x => x.id === stockTarget.id ? { ...x, stock: Math.max(0, (+x.stock || 0) + (parseInt(stockVal) || 0)), bs: Math.max(0, (+x.bs || 0) + (parseInt(bsVal) || 0)) } : x) }));
+    setData(d => ({ ...d, variants: (d.variants || []).map(x => x.id === stockTarget.id ? { ...x, stock: Math.max(0, (+x.stock || 0) + (parseInt(stockVal) || 0)), bs: Math.max(0, (+x.bs || 0) + (parseInt(bsVal) || 0)), updatedAt: Date.now() } : x) }));
     closeStock();
   };
 
@@ -3571,6 +3607,28 @@ function Production({ data, setData }) {
   const totalStock = variants.reduce((s, v) => s + (+v.stock || 0), 0);
   const totalBs = variants.reduce((s, v) => s + (+v.bs || 0), 0);
   const stockValue = variants.reduce((s, v) => s + (+v.stock || 0) * hppBreakdown(v, plastics, labels).total, 0);
+  const [sortBy, setSortBy] = useState("margin_desc");
+  const [q, setQ] = useState("");
+  const sortedVariants = (() => {
+    const qn = q.trim().toLowerCase();
+    const rows = variants.filter(v => !qn || (v.name || "").toLowerCase().includes(qn)).map(v => {
+      const h = hppBreakdown(v, plastics, labels);
+      const marginPct = v.sellPrice > 0 ? (v.sellPrice - h.total) / v.sellPrice * 100 : null;
+      const stock = +v.stock || 0; const bs = +v.bs || 0; const prod = stock + bs;
+      return { v, marginPct, stock, bsPct: prod > 0 ? bs / prod * 100 : 0, value: stock * h.total, updated: +v.updatedAt || 0 };
+    });
+    const S = {
+      margin_desc: (a, b) => (b.marginPct ?? -1e12) - (a.marginPct ?? -1e12),
+      margin_asc: (a, b) => (a.marginPct ?? 1e12) - (b.marginPct ?? 1e12),
+      stock_desc: (a, b) => b.stock - a.stock,
+      stock_asc: (a, b) => a.stock - b.stock,
+      bs_desc: (a, b) => b.bsPct - a.bsPct,
+      value_desc: (a, b) => b.value - a.value,
+      updated_desc: (a, b) => b.updated - a.updated,
+      name_asc: (a, b) => a.v.name.localeCompare(b.v.name, "id"),
+    };
+    return rows.sort(S[sortBy] || S.margin_desc);
+  })();
   const liveHpp = hppBreakdown({ pricePerBall: vf.pricePerBall, packsPerBall: vf.packsPerBall, plastikId: vf.plastikId, labelId: vf.labelId }, plastics, labels);
   const liveMargin = (+vf.sellPrice || 0) - liveHpp.total;
 
@@ -3590,42 +3648,57 @@ function Production({ data, setData }) {
               <StatCard label="BS / Retur" value={`${totalBs} bks`} sub={(totalStock + totalBs) > 0 ? `${Math.round(totalBs / (totalStock + totalBs) * 100)}% dari total produksi` : undefined} icon={<Icon name="alert" size={20} />} color="var(--red)" soft="var(--red-soft)" onClick={variants.length ? () => setSummaryView("bs") : undefined} />
               <StatCard label="Nilai Stok (HPP)" value={fmtShort(stockValue)} icon={<Icon name="coins" size={20} />} color="var(--amber)" soft="var(--amber-soft)" onClick={variants.length ? () => setSummaryView("value") : undefined} />
             </div>
+            {variants.length > 1 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ position: "relative", marginBottom: 10 }}>
+                  <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", display: "flex", pointerEvents: "none" }}><Icon name="search" size={16} /></span>
+                  <input placeholder="Cari varian..." value={q} onChange={e => setQ(e.target.value)} style={{ paddingLeft: 40 }} />
+                  {q && <button onClick={() => setQ("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "var(--bg-2)", border: "none", borderRadius: 99, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--muted)" }}><Icon name="x" size={13} /></button>}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 700, flexShrink: 0 }}>Urutkan:</span>
+                <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ flex: 1, maxWidth: 280 }}>
+                  <option value="margin_desc">Margin tertinggi</option>
+                  <option value="margin_asc">Margin terendah</option>
+                  <option value="stock_desc">Stok terbanyak</option>
+                  <option value="stock_asc">Stok paling sedikit</option>
+                  <option value="bs_desc">BS % tertinggi</option>
+                  <option value="value_desc">Nilai stok tertinggi</option>
+                  <option value="updated_desc">Baru diupdate</option>
+                  <option value="name_asc">Nama A-Z</option>
+                </select>
+                </div>
+              </div>
+            )}
             {variants.length === 0 ? (
               <Card><EmptyState icon={<Icon name="layers" size={34} style={{ color: "var(--line-strong)" }} />} title="Belum ada varian" sub="Tambah varian untuk mulai menghitung stok & HPP" /></Card>
+            ) : sortedVariants.length === 0 ? (
+              <Card><EmptyState icon={<Icon name="search" size={34} style={{ color: "var(--line-strong)" }} />} title="Tidak ditemukan" sub={`Tidak ada varian yang cocok dengan "${q}"`} /></Card>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
-                {variants.map(v => {
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+                {sortedVariants.map(({ v }) => {
                   const h = hppBreakdown(v, plastics, labels);
                   const margin = v.sellPrice > 0 ? (v.sellPrice - h.total) : 0;
                   const marginPct = v.sellPrice > 0 ? Math.round((margin / v.sellPrice) * 100) : 0;
                   return (
-                    <Card key={v.id} onClick={() => setDetailVarId(v.id)}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flex: 1 }}>
-                          <p style={{ fontWeight: 800, fontSize: 15.5, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</p>
-                          <Icon name="chevron-right" size={15} style={{ color: "var(--line-strong)", flexShrink: 0 }} />
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                          <Btn size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openVarEdit(v); }}><Icon name="pencil" size={14} /></Btn>
-                          <Btn size="sm" variant="danger" onClick={(e) => { e.stopPropagation(); delVar(v); }}><Icon name="trash" size={14} /></Btn>
+                    <Card key={v.id} onClick={() => setDetailVarId(v.id)} style={{ padding: 0, overflow: "hidden" }}>
+                      <div style={{ position: "relative", aspectRatio: "1 / 1", background: "var(--bg)" }}>
+                        {v.photo
+                          ? <img src={v.photo} alt={v.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--line-strong)" }}><Icon name="layers" size={36} /></div>}
+                        {v.sellPrice > 0 && <span className="tnum" style={{ position: "absolute", top: 8, left: 8, background: "rgba(255,255,255,0.94)", borderRadius: 99, padding: "3px 9px", fontSize: 11, fontWeight: 800, color: margin >= 0 ? "var(--green)" : "var(--red)", boxShadow: "var(--shadow-xs)" }}>{marginPct}%</span>}
+                        {(+v.bs || 0) > 0 && <span className="tnum" style={{ position: "absolute", top: 8, right: 8, background: "var(--red)", color: "#fff", borderRadius: 99, padding: "3px 9px", fontSize: 11, fontWeight: 800 }}>BS {v.bs}</span>}
+                      </div>
+                      <div style={{ padding: "10px 12px 12px" }}>
+                        <p style={{ fontWeight: 800, fontSize: 13.5, lineHeight: 1.25, marginBottom: 5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: 34 }}>{v.name}</p>
+                        <p className="tnum" style={{ fontSize: 15, fontWeight: 800, color: "var(--brand)", lineHeight: 1.1 }}>{v.sellPrice > 0 ? fmt(v.sellPrice) : "Harga belum diisi"}</p>
+                        <p className="tnum" style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, marginTop: 3 }}>HPP {fmt(Math.round(h.total))}</p>
+                        <p className="tnum" style={{ fontSize: 13, fontWeight: 800, marginTop: 7, color: "var(--ink)" }}>{v.stock || 0} <span style={{ fontWeight: 700, color: "var(--muted)", fontSize: 11 }}>bks stok</span></p>
+                        {v.updatedAt ? <p style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}><Icon name="clock" size={10} /> {timeAgo(v.updatedAt)}</p> : null}
+                        <div style={{ marginTop: 9 }}>
+                          <Btn full size="sm" variant="outline" icon={<Icon name="package" size={13} />} onClick={(e) => { e.stopPropagation(); openStock(v); }}>Update Stok</Btn>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                        <Tag color="var(--amber)">HPP {fmt(Math.round(h.total))}</Tag>
-                        {v.sellPrice > 0 && <Tag color="var(--brand)">Jual {fmt(v.sellPrice)}</Tag>}
-                        {v.sellPrice > 0 && <Tag color={margin >= 0 ? "var(--green)" : "var(--red)"}>Margin {marginPct}%</Tag>}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                        <div style={{ background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "12px", textAlign: "center" }}>
-                          <p className="tnum" style={{ fontSize: 26, fontWeight: 800, color: "var(--brand)", lineHeight: 1 }}>{v.stock || 0}</p>
-                          <p style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>bks stok</p>
-                        </div>
-                        <div style={{ background: (v.bs > 0 ? "var(--red-soft)" : "var(--bg)"), border: "1.5px solid var(--line)", borderRadius: 12, padding: "12px", textAlign: "center" }}>
-                          <p className="tnum" style={{ fontSize: 26, fontWeight: 800, color: (v.bs > 0 ? "var(--red)" : "var(--muted)"), lineHeight: 1 }}>{v.bs || 0}</p>
-                          <p className="tnum" style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>BS / Retur{((+v.stock || 0) + (+v.bs || 0)) > 0 && (+v.bs || 0) > 0 ? ` · ${Math.round((+v.bs) / ((+v.stock || 0) + (+v.bs)) * 100)}%` : ""}</p>
-                        </div>
-                      </div>
-                      <Btn full size="sm" variant="outline" icon={<Icon name="package" size={14} />} onClick={(e) => { e.stopPropagation(); openStock(v); }}>Update Stok</Btn>
                     </Card>
                   );
                 })}
@@ -3710,6 +3783,20 @@ function Production({ data, setData }) {
 
       <Modal show={showVar} onClose={() => setShowVar(false)} title={editVarId ? "Edit Varian" : "Tambah Varian"}>
         <FG label="Nama Varian"><input placeholder="Kriuk Original 100g" value={vf.name} onChange={e => setVf(f => ({ ...f, name: e.target.value }))} /></FG>
+        <FG label="Foto Produk" hint="Opsional, agar varian mudah dikenali dari gambar">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 64, height: 64, borderRadius: 12, background: "var(--bg)", border: "1.5px solid var(--line)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {vf.photo ? <img src={vf.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon name="image" size={22} style={{ color: "var(--line-strong)" }} />}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 10, border: "1.5px solid var(--line-strong)", background: "var(--surface)", fontSize: 13, fontWeight: 700, color: "var(--ink-2)", cursor: "pointer", fontFamily: "var(--font)" }}>
+                <Icon name="camera" size={15} /> {vf.photo ? "Ganti Foto" : "Pilih Foto"}
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={async e => { const fl = e.target.files && e.target.files[0]; e.target.value = ""; if (!fl) return; try { const src = await resizeImageFile(fl, 480, 0.7); setVf(x => ({ ...x, photo: src })); } catch {} }} />
+              </label>
+              {vf.photo && <Btn size="sm" variant="danger" onClick={() => setVf(x => ({ ...x, photo: "" }))}><Icon name="trash" size={14} /></Btn>}
+            </div>
+          </div>
+        </FG>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <FG label="Harga Snack / Ball"><input type="number" inputMode="numeric" placeholder="90000" value={vf.pricePerBall} onChange={e => setVf(f => ({ ...f, pricePerBall: e.target.value }))} /></FG>
           <FG label="Bungkus per Ball" hint="1 ball = ? bks"><input type="number" inputMode="numeric" placeholder="20" value={vf.packsPerBall} onChange={e => setVf(f => ({ ...f, packsPerBall: e.target.value }))} /></FG>
@@ -3807,6 +3894,7 @@ function Production({ data, setData }) {
         const sec = (t) => <p style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "18px 0 6px" }}>{t}</p>;
         return (
           <Modal show={!!detailVarId} onClose={() => setDetailVarId(null)} title={dv.name} subtitle="Rincian varian produksi" wide>
+            {dv.photo && <img src={dv.photo} alt={dv.name} style={{ width: "100%", height: 175, objectFit: "cover", borderRadius: 14, marginBottom: 14, display: "block" }} />}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
               <div style={{ background: "var(--bg)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "13px 10px", textAlign: "center" }}>
                 <p className="tnum" style={{ fontSize: 24, fontWeight: 800, color: "var(--brand)", lineHeight: 1 }}>{dv.stock || 0}</p>
@@ -3826,6 +3914,7 @@ function Production({ data, setData }) {
                 Rasio BS: <b style={{ color: (dv.bs || 0) > 0 ? "var(--red)" : "var(--green)" }}>{Math.round((+dv.bs || 0) / ((+dv.stock || 0) + (+dv.bs || 0)) * 100)}%</b> dari total produksi
               </p>
             )}
+            {dv.updatedAt ? <p style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600, textAlign: "center", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}><Icon name="clock" size={12} /> Terakhir diupdate {timeAgo(dv.updatedAt)}</p> : null}
             {sec("Harga & Margin")}
             <DRow label="Harga jual / bungkus" value={fmt(dv.sellPrice || 0)} />
             <DRow label="HPP / bungkus" value={fmt(Math.round(h.total))} color="var(--amber)" />
@@ -3844,6 +3933,9 @@ function Production({ data, setData }) {
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <Btn full variant="outline" icon={<Icon name="package" size={15} />} onClick={() => { setDetailVarId(null); openStock(dv); }}>Update Stok</Btn>
               <Btn full icon={<Icon name="pencil" size={15} />} onClick={() => { setDetailVarId(null); openVarEdit(dv); }}>Edit Varian</Btn>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <Btn full variant="danger" icon={<Icon name="trash" size={15} />} onClick={() => { setDetailVarId(null); delVar(dv); }}>Hapus Varian</Btn>
             </div>
           </Modal>
         );
