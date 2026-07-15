@@ -3943,7 +3943,7 @@ function Production({ data, setData }) {
 
       {(() => {
         if (!summaryView) return null;
-        const rows = variants.map(v => { const h = hppBreakdown(v, plastics, labels); return { id: v.id, name: v.name, stock: +v.stock || 0, bs: +v.bs || 0, value: (+v.stock || 0) * h.total }; });
+        const rows = variants.map(v => { const h = hppBreakdown(v, plastics, labels); return { id: v.id, name: v.name, stock: +v.stock || 0, bs: +v.bs || 0, hpp: h.total, value: (+v.stock || 0) * h.total }; });
         const cfg = summaryView === "stock" ? { title: "Rincian Total Stok", sub: "Stok per varian", total: totalStock, get: r => r.stock, fmtv: n => `${n} bks`, color: "var(--green)" }
           : summaryView === "bs" ? { title: "Rincian BS / Retur", sub: "Barang rusak / retur per varian", total: totalBs, get: r => r.bs, fmtv: n => `${n} bks`, color: "var(--red)" }
           : { title: "Rincian Nilai Stok", sub: "Nilai stok (HPP) per varian", total: stockValue, get: r => r.value, fmtv: n => fmt(Math.round(n)), color: "var(--amber)" };
@@ -3954,6 +3954,12 @@ function Production({ data, setData }) {
               <span style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)" }}>Total</span>
               <span className="tnum" style={{ fontSize: 20, fontWeight: 800, color: cfg.color }}>{cfg.fmtv(cfg.total)}</span>
             </div>
+            {summaryView === "stock" && totalStock > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: -6, marginBottom: 16 }}>
+                <MiniStat label="Rata-rata HPP / bks" value={fmt(Math.round(stockValue / totalStock))} color="var(--amber)" />
+                <MiniStat label="Nilai Stok (HPP)" value={fmtShort(stockValue)} color="var(--amber)" />
+              </div>
+            )}
             {sorted.length === 0 || cfg.total === 0 ? (
               <p style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500, textAlign: "center", padding: "10px 0" }}>Belum ada data.</p>
             ) : sorted.map(r => {
@@ -3964,6 +3970,7 @@ function Production({ data, setData }) {
                     <span style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
                     <span className="tnum" style={{ fontSize: 14, fontWeight: 800, color: val > 0 ? cfg.color : "var(--muted)", flexShrink: 0 }}>{cfg.fmtv(val)}</span>
                   </div>
+                  {summaryView === "stock" && <p className="tnum" style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "-3px 0 7px" }}>HPP {fmt(Math.round(r.hpp))}/bks · nilai {fmtShort(r.value)}</p>}
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ flex: 1, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden" }}>
                       <div style={{ width: pct + "%", height: "100%", background: cfg.color, borderRadius: 99 }} />
