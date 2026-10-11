@@ -302,7 +302,10 @@ const INIT = {
   receiptCounter: 1,
   assets: [],
   assetSnapshots: [],
+  titipanSnapshots: [],
   lastBackupAt: 0,
+  cloudSync: { url: "", key: "", code: "" },
+  importedSalesReports: [],
   expenseCategories: ["Produksi","Transport","Kemasan","Gaji","Sewa","Listrik","Lain-lain"],
   expenseAdjustments: {},
   plastics: [
@@ -1606,6 +1609,25 @@ function Finance({ data, setData, initialTab, onTabConsumed }) {
   const firstSnap = assetSnaps[0] || null;
   const growChart = assetSnaps.slice(-60).map(sn => ({ total: sn.total, label: sn.date.slice(8) + "/" + sn.date.slice(5, 7) }));
 
+  const titipanQtyAll = titipanRows.reduce((s, r) => s + (+r.remaining || 0), 0);
+  useEffect(() => {
+    setData(d => {
+      const snaps = d.titipanSnapshots || [];
+      if (nilaiTitipanAll === 0 && snaps.length === 0) return d;
+      const cur = snaps.filter(s => s.date === today).pop();
+      if (cur && cur.total === nilaiTitipanAll && cur.qty === titipanQtyAll) return d;
+      const rest = snaps.filter(s => s.date !== today);
+      return { ...d, titipanSnapshots: [...rest, { date: today, total: nilaiTitipanAll, qty: titipanQtyAll }].sort((a, b) => a.date.localeCompare(b.date)) };
+    });
+  }, [nilaiTitipanAll, titipanQtyAll]);
+  const tSnaps = (data.titipanSnapshots || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+  const tValueAsOf = (ds) => { let v = null; for (const sn of tSnaps) { if (sn.date <= ds) v = sn.total; else break; } return v; };
+  const tChart = tSnaps.slice(-60).map(sn => ({ total: sn.total, qty: sn.qty || 0, label: sn.date.slice(8) + "/" + sn.date.slice(5, 7) }));
+  const tDayBase = tValueAsOf(offsetDate(1));
+  const tWeekBase = tValueAsOf(offsetDate(7));
+  const tMonthBase = tValueAsOf(monthAgoStr);
+  const tFirst = tSnaps[0] || null;
+
   const titipanBody = (
     <>
       <div className="route-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", overflowY: "hidden", marginBottom: 16, paddingBottom: 6, WebkitOverflowScrolling: "touch", scrollbarWidth: "thin" }}>
@@ -1634,6 +1656,37 @@ function Finance({ data, setData, initialTab, onTabConsumed }) {
           <p className="tnum" style={{ fontSize: 13, fontWeight: 600, opacity: 0.92, marginTop: 6 }}>{titipanQty} bungkus · {titipanStoreCount} toko · {titipanByProduct.length} jenis produk</p>
         </div>
       </div>
+
+      {!titipanRoute && (
+        <Card style={{ marginBottom: 16 }}>
+          <p style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}><Icon name="trending-up" size={18} /> Pertumbuhan Nilai Titipan</p>
+          <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginBottom: 14, lineHeight: 1.5 }}>Nilai barang titipan di semua toko, direkam otomatis setiap hari.</p>
+          {tSnaps.length < 2 ? (
+            <div style={{ background: "var(--bg)", border: "1.5px dashed var(--line-strong)", borderRadius: 12, padding: "18px 16px", textAlign: "center" }}>
+              <p style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>Grafik tampil setelah ada minimal 2 hari data. Nilai hari ini sudah direkam — buka lagi besok untuk melihat pertumbuhannya.</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+                <GrowthCard label="Harian" now={nilaiTitipanAll} past={tDayBase} />
+                <GrowthCard label="Mingguan" now={nilaiTitipanAll} past={tWeekBase} />
+                <GrowthCard label="Bulanan" now={nilaiTitipanAll} past={tMonthBase} />
+              </div>
+              <ResponsiveContainer width="100%" height={210}>
+                <AreaChart data={tChart} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <defs><linearGradient id="grad-titipan" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--brand)" stopOpacity={0.25} /><stop offset="100%" stopColor="var(--brand)" stopOpacity={0} /></linearGradient></defs>
+                  <CartesianGrid strokeDasharray="3 4" stroke="#EFE8DB" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={20} />
+                  <YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtShort} />
+                  <Tooltip contentStyle={{ background: "var(--surface)", border: "1.5px solid var(--line)", borderRadius: 12, fontSize: 12, boxShadow: "var(--shadow)", fontFamily: "var(--font)" }} labelFormatter={l => `Tgl ${l}`} formatter={(v, n) => n === "qty" ? [`${v} bks`, "Jumlah"] : [fmt(v), "Nilai"]} />
+                  <Area type="monotone" dataKey="total" stroke="var(--brand)" strokeWidth={3} fill="url(#grad-titipan)" dot={{ fill: "var(--brand)", r: 2.5 }} activeDot={{ r: 6 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+              {tFirst && <p className="tnum" style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, textAlign: "center", marginTop: 8 }}>Sejak {tFirst.date.slice(8)}/{tFirst.date.slice(5, 7)}/{tFirst.date.slice(0, 4)}: <b style={{ color: (nilaiTitipanAll - tFirst.total) >= 0 ? "var(--green)" : "var(--red)" }}>{(nilaiTitipanAll - tFirst.total) >= 0 ? "+" : "−"}{fmt(Math.abs(nilaiTitipanAll - tFirst.total))}</b></p>}
+            </>
+          )}
+        </Card>
+      )}
 
       <Card style={{ marginBottom: 16 }}>
         <p style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}><Icon name="package" size={18} /> Rincian per Produk</p>
@@ -2379,13 +2432,17 @@ function StoreDetail({ store, data, setData, onBack }) {
 
   const saveStockEdit = () => {
     if (!editStock) return;
+    if (String(editStock.qty).trim() === "") { setEditStock(null); return; }
     const q = Math.max(0, parseInt(editStock.qty, 10) || 0);
-    setData(d => ({ ...d, consignments: d.consignments.map(c =>
-      c.id === editStock.id ? { ...c, deposited: q, remaining: q, status: q <= 0 ? "closed" : "active" } : c
-    )}));
+    setData(d => ({ ...d, consignments: d.consignments.map(c => {
+      if (c.id !== editStock.id) return c;
+      const from = +c.remaining || 0;
+      const log = from === q ? (c.stockLog || []) : [{ ts: Date.now(), from, to: q }, ...(c.stockLog || [])].slice(0, 30);
+      return { ...c, deposited: q, remaining: q, status: q <= 0 ? "closed" : "active", stockLog: log };
+    })}));
     setEditStock(null);
   };
-  const bumpStock = (delta) => setEditStock(s => ({ ...s, qty: String(Math.max(0, (parseInt(s.qty, 10) || 0) + delta)) }));
+  const bumpStock = (delta) => setEditStock(s => ({ ...s, qty: String(Math.max(0, (parseInt(s.qty, 10) === 0 || s.qty ? (parseInt(s.qty, 10) || 0) : (s.current || 0)) + delta)) }));
 
   const askDelStore = () => confirm({
     title: "Hapus Toko?", message: `Toko "${store.name}" akan dihapus permanen. Riwayat nota tetap tersimpan.`,
@@ -2463,7 +2520,7 @@ function StoreDetail({ store, data, setData, onBack }) {
                     <span>Nilai: <b style={{ color: "var(--ink)" }}>{fmt(stockValue)}</b></span>
                     <span>Drop: <b style={{ color: "var(--ink)" }}>{fmtDate(c.date)}</b></span>
                   </div>
-                  <Btn full size="sm" variant="ghost" icon={<Icon name="pencil" size={14} />} onClick={() => setEditStock({ id: c.id, name: p?.name || "Produk", qty: String(c.remaining) })}>Ubah Stok</Btn>
+                  <Btn full size="sm" variant="ghost" icon={<Icon name="pencil" size={14} />} onClick={() => setEditStock({ id: c.id, name: p?.name || "Produk", qty: "", current: c.remaining, history: c.stockLog || [] })}>Ubah Stok</Btn>
                 </div>
               );
             })}
@@ -2751,16 +2808,38 @@ function StoreDetail({ store, data, setData, onBack }) {
         <p style={{ fontSize:13, color:"var(--ink-2)", marginBottom:18, lineHeight:1.55, fontWeight:500 }}>
           Atur jumlah stok yang ada di toko secara manual. Berguna untuk koreksi hitung, barang rusak, atau ambil kembali sebagian. <b>Tidak membuat tagihan atau nota.</b>
         </p>
+        <p style={{ textAlign:"center", fontSize:13, color:"var(--muted)", marginBottom:12, fontWeight:600 }}>Stok tercatat sekarang: <b style={{ color:"var(--ink)" }}>{editStock?.current ?? 0} bks</b></p>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:14, marginBottom:14 }}>
           <button onClick={() => bumpStock(-1)} style={{ width:54, height:54, borderRadius:14, border:"1.5px solid var(--line-strong)", background:"var(--surface)", color:"var(--ink)", fontSize:26, fontWeight:800, cursor:"pointer", fontFamily:"var(--font)", display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
-          <input type="number" inputMode="numeric" value={editStock?.qty ?? ""} min={0} onChange={e => setEditStock(s => ({ ...s, qty: e.target.value }))}
+          <input type="number" inputMode="numeric" placeholder={String(editStock?.current ?? 0)} value={editStock?.qty ?? ""} min={0} onFocus={e => e.target.select()} onChange={e => setEditStock(s => ({ ...s, qty: e.target.value }))}
             className="tnum" style={{ textAlign:"center", fontSize:34, fontWeight:800, color:"var(--brand-deep)", padding:"12px", width:130, border:"2px solid var(--brand)" }} />
           <button onClick={() => bumpStock(1)} style={{ width:54, height:54, borderRadius:14, border:"1.5px solid var(--brand-tint)", background:"var(--brand-soft)", color:"var(--brand-deep)", fontSize:26, fontWeight:800, cursor:"pointer", fontFamily:"var(--font)", display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
         </div>
-        <p style={{ textAlign:"center", fontSize:12.5, color:"var(--muted)", marginBottom:18, fontWeight:600 }}>bungkus (bks) di toko</p>
+        <p style={{ textAlign:"center", fontSize:12.5, color:"var(--muted)", marginBottom:18, fontWeight:600 }}>
+          {String(editStock?.qty ?? "").trim() === ""
+            ? "bungkus (bks) di toko — ketik jumlah stok terbaru"
+            : <>jadi <b className="tnum" style={{ color:"var(--ink)" }}>{Math.max(0, parseInt(editStock.qty, 10) || 0)} bks</b> <span className="tnum">({(Math.max(0, parseInt(editStock.qty, 10) || 0) - (editStock?.current ?? 0)) >= 0 ? "+" : "−"}{Math.abs(Math.max(0, parseInt(editStock.qty, 10) || 0) - (editStock?.current ?? 0))})</span></>}
+        </p>
         {parseInt(editStock?.qty, 10) === 0 && (
           <div style={{ background:"var(--red-soft)", border:"1.5px solid #F2C7C3", borderRadius:11, padding:"10px 14px", marginBottom:16, fontSize:12.5, color:"var(--red)", fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:7 }}>
             <Icon name="alert" size={15} /> Jumlah 0 — produk ini akan dihapus dari toko.
+          </div>
+        )}
+        {editStock?.history?.length > 0 && (
+          <div style={{ marginBottom:18 }}>
+            <p style={{ fontSize:11.5, fontWeight:800, color:"var(--muted)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Riwayat Ubah Stok</p>
+            {editStock.history.slice(0, 8).map((h, i) => {
+              const dlt = h.to - h.from;
+              return (
+                <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, padding:"8px 0", borderBottom:"1px solid var(--line)" }}>
+                  <span className="tnum" style={{ fontSize:13, fontWeight:700 }}>{h.from} → {h.to} bks</span>
+                  <span style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                    <span className="tnum" style={{ fontSize:12, fontWeight:800, color: dlt >= 0 ? "var(--green)" : "var(--red)" }}>{dlt >= 0 ? "+" : "−"}{Math.abs(dlt)}</span>
+                    <span style={{ fontSize:11, color:"var(--muted)", fontWeight:600 }}>{timeAgo(h.ts)}</span>
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
         <div style={{display:"flex",gap:10}}>
@@ -4009,6 +4088,85 @@ function Settings({ data, setData }) {
 
   const buildPayload = () => buildBackupPayload(data);
   const markBackedUp = () => setData(d => ({ ...d, lastBackupAt: Date.now() }));
+  const cs = data.cloudSync || { url: "", key: "", code: "" };
+  const setCs = (patch) => setData(d => ({ ...d, cloudSync: { ...(d.cloudSync || {}), ...patch } }));
+  const [cloudBusy, setCloudBusy] = useState(null);
+  const csReady = (cs.url || "").trim() && (cs.key || "").trim() && (cs.code || "").trim();
+  const sbHeaders = () => ({ apikey: cs.key.trim(), Authorization: `Bearer ${cs.key.trim()}`, "Content-Type": "application/json" });
+  const sbBase = () => cs.url.trim().replace(/\/+$/, "") + "/rest/v1/kriuk_backups";
+  const genCode = () => { const chars = "abcdefghjkmnpqrstuvwxyz23456789"; let c = "kriuk-"; for (let i = 0; i < 16; i++) c += chars[Math.floor(Math.random() * chars.length)]; setCs({ code: c }); };
+  const cloudUpload = async () => {
+    if (!csReady) { setMsg({ type: "error", text: "Isi dulu Supabase URL, Anon Key, dan Kode Sinkronisasi." }); return; }
+    setCloudBusy("up");
+    try {
+      const res = await fetch(sbBase() + "?on_conflict=code", { method: "POST", headers: { ...sbHeaders(), Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ code: cs.code.trim(), payload: JSON.parse(buildBackupPayload(data)), updated_at: new Date().toISOString() }) });
+      if (!res.ok) throw new Error(String(res.status));
+      markBackedUp();
+      setMsg({ type: "ok", text: "Data terupload ke cloud. Di perangkat lain: isi URL, Key, dan Kode yang sama, lalu tekan 'Ambil dari Cloud'." });
+    } catch { setMsg({ type: "error", text: "Upload gagal. Cek URL/Anon Key, koneksi internet, dan pastikan tabel kriuk_backups sudah dibuat." }); }
+    setCloudBusy(null);
+  };
+  const cloudFetchSales = async () => {
+    if (!csReady) { setMsg({ type: "error", text: "Isi dulu Supabase URL, Anon Key, dan Kode Sinkronisasi." }); return; }
+    setCloudBusy("sales");
+    try {
+      const res = await fetch(sbBase() + `?code=like.${encodeURIComponent(cs.code.trim() + "-sales")}*&select=code,payload,updated_at`, { headers: sbHeaders() });
+      if (!res.ok) throw new Error(String(res.status));
+      const rows = await res.json();
+      const done = data.importedSalesReports || [];
+      const reports = [];
+      rows.forEach(r => (r.payload?.reports || []).forEach(rep => { if (rep && rep.reportId && !done.includes(rep.reportId)) reports.push(rep); }));
+      if (!reports.length) { setMsg({ type: "info", text: "Tidak ada laporan sales baru." }); setCloudBusy(null); return; }
+      reports.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const nTx = reports.reduce((n, r) => n + (r.transactions || []).length, 0);
+      const names = Array.from(new Set(reports.map(r => r.salesName || "Sales"))).join(", ");
+      confirm({
+        title: "Masukkan Laporan Sales?",
+        message: `${reports.length} laporan dari ${names} berisi ${nTx} transaksi penjualan. Data titipan di toko akan disesuaikan dengan kondisi terakhir di lapangan. Lanjutkan?`,
+        confirmText: "Ya, Masukkan", icon: "download",
+        onConfirm: () => {
+          setData(d => {
+            const txIds = new Set((d.transactions || []).map(t => t.id));
+            const rcIds = new Set((d.receipts || []).map(r => r.id));
+            const addTx = [], addRc = [];
+            const visits = {};
+            reports.forEach(rep => {
+              (rep.transactions || []).forEach(t => { if (!txIds.has(t.id)) { addTx.push(t); txIds.add(t.id); } });
+              (rep.receipts || []).forEach(r => { if (!rcIds.has(r.id)) { addRc.push(r); rcIds.add(r.id); } });
+              (rep.visits || []).forEach(v => { visits[v.storeId] = v.date; });
+            });
+            const last = reports[reports.length - 1];
+            return {
+              ...d,
+              transactions: [...addTx, ...(d.transactions || [])],
+              receipts: [...addRc, ...(d.receipts || [])],
+              consignments: Array.isArray(last.consignments) ? last.consignments : d.consignments,
+              stores: (d.stores || []).map(st => visits[st.id] ? { ...st, lastVisit: visits[st.id] } : st),
+              importedSalesReports: [...(d.importedSalesReports || []), ...reports.map(r => r.reportId)].slice(-300),
+            };
+          });
+          setMsg({ type: "ok", text: `${reports.length} laporan sales dimasukkan (${nTx} transaksi).` });
+        },
+      });
+    } catch { setMsg({ type: "error", text: "Gagal mengambil laporan sales. Cek URL/Anon Key dan koneksi." }); }
+    setCloudBusy(null);
+  };
+
+  const cloudFetch = async () => {
+    if (!csReady) { setMsg({ type: "error", text: "Isi dulu Supabase URL, Anon Key, dan Kode Sinkronisasi." }); return; }
+    setCloudBusy("down");
+    try {
+      const res = await fetch(sbBase() + `?code=eq.${encodeURIComponent(cs.code.trim())}&select=payload,updated_at`, { headers: sbHeaders() });
+      if (!res.ok) throw new Error(String(res.status));
+      const rows = await res.json();
+      if (!rows.length) setMsg({ type: "error", text: "Belum ada data di cloud untuk kode ini. Upload dulu dari perangkat utama." });
+      else {
+        const when = rows[0].updated_at ? new Date(rows[0].updated_at).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+        tryParse(JSON.stringify(rows[0].payload), `cloud (upload ${when})`);
+      }
+    } catch { setMsg({ type: "error", text: "Gagal mengambil dari cloud. Cek URL/Anon Key dan koneksi internet." }); }
+    setCloudBusy(null);
+  };
 
   const downloadBackup = () => {
     if (triggerBackupDownload(data)) { markBackedUp(); setMsg({ type: "ok", text: "Backup berhasil diunduh. Simpan file di tempat aman (Drive, email, dll)." }); }
@@ -4097,6 +4255,30 @@ function Settings({ data, setData }) {
             </div>
           </>
         )}
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--brand-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--brand)" }}><Icon name="refresh" size={22} /></div>
+          <div>
+            <p style={{ fontWeight: 800, fontSize: 16 }}>Sinkronisasi Cloud</p>
+            <p style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>Upload data agar bisa diambil dari perangkat lain</p>
+          </div>
+        </div>
+        <FG label="Supabase URL"><input placeholder="https://xxxx.supabase.co" value={cs.url || ""} onChange={e => setCs({ url: e.target.value })} /></FG>
+        <FG label="Anon Key (public)"><input placeholder="eyJhbGciOi..." value={cs.key || ""} onChange={e => setCs({ key: e.target.value })} /></FG>
+        <FG label="Kode Sinkronisasi" hint="Berlaku seperti password — samakan di semua perangkat, jangan dibagikan.">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input style={{ flex: 1 }} placeholder="kriuk-xxxxxxxxxxxxxxxx" value={cs.code || ""} onChange={e => setCs({ code: e.target.value })} />
+            <Btn size="sm" variant="outline" onClick={genCode}>Buat Kode</Btn>
+          </div>
+        </FG>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <Btn full icon={<Icon name="send" size={15} />} disabled={!!cloudBusy} onClick={cloudUpload}>{cloudBusy === "up" ? "Mengupload..." : "Upload ke Cloud"}</Btn>
+          <Btn full variant="outline" icon={<Icon name="download" size={15} />} disabled={!!cloudBusy} onClick={cloudFetch}>{cloudBusy === "down" ? "Mengambil..." : "Ambil dari Cloud"}</Btn>
+        </div>
+        <Btn full variant="outline" icon={<Icon name="user" size={15} />} disabled={!!cloudBusy} onClick={cloudFetchSales} >{cloudBusy === "sales" ? "Memeriksa..." : "Ambil Laporan Sales"}</Btn>
+        <p style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, lineHeight: 1.55, marginTop: 12 }}>Butuh akun Supabase gratis (setup sekali, ±5 menit — lihat panduan). Siapa pun yang tahu kode bisa mengakses data ini, jadi gunakan kode panjang dari tombol "Buat Kode".</p>
       </Card>
 
       <Card style={{ marginBottom: 16 }}>
